@@ -438,6 +438,16 @@ local function UpdateBuffAnchor(self, buffName, index, numDebuffs, anchorIndex, 
             buff:ClearAllPoints()
             buff:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
         else
+            -- Fix circular dependency i've created
+            local _, a = self.debuffs:GetPoint()
+            if a then
+                local _, b = a:GetPoint()
+                if b == self.buffs then
+                    self.debuffs:ClearAllPoints()
+                    self.debuffs:SetPoint(point .. "LEFT", self, point .. "LEFT", 0, 0)
+                    self.debuffs:SetPoint(relativePoint .. "LEFT", self, relativePoint .. "LEFT", 0, -auraOffsetY)
+                end
+            end
             -- unit is not friendly and we have debuffs...buffs start on bottom
             buff:ClearAllPoints()
             buff:SetPoint(point .. "LEFT", self.debuffs, relativePoint .. "LEFT", 0, -offsetY);
@@ -661,8 +671,13 @@ local function Filterino(self)
 
     local offsetX = DeBuffFilter.db.profile.horizontalSpace
 
-    updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
-    updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+    if UnitIsFriend("player", self.unit) then
+        updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+        updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+    else
+        updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+        updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+    end
 
     if self.spellbar then
         Target_Spellbar_AdjustPosition(self.spellbar)
