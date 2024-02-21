@@ -6,12 +6,12 @@ local MAX_TARGET_BUFFS = 32
 local AURA_START_Y = 32
 local AURA_START_X = 5
 local mabs, pairs, mfloor = math.abs, pairs, math.floor
-local _G = getfenv(0)
-local UnitBuff, UnitDebuff = _G.UnitBuff, _G.UnitDebuff
+local UnitBuff, UnitDebuff, UnitIsEnemy = _G.UnitBuff, _G.UnitDebuff, _G.UnitIsEnemy
 local UnitIsUnit, UnitIsOwnerOrControllerOfUnit, UnitIsFriend = _G.UnitIsUnit, _G.UnitIsOwnerOrControllerOfUnit, _G.UnitIsFriend
 local IsAddOnLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
 local GetAddOnInfo = C_AddOns and C_AddOns.GetAddOnInfo or GetAddOnInfo
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+local isClassic = WOW_PROJECT_ID == WOW_PROJECT_CLASSIC
 
 local defaults = {
     profile = {
@@ -68,7 +68,9 @@ function DeBuffFilter:AddCustomHighlightOptions()
                     set = function(info, r, g, b, a)
                         self.db.profile.customHighlightColors[buff] = { r = r, g = g, b = b, a = a }
                         TargetFrame_UpdateAuras(TargetFrame)
-                        if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end
+                        if FocusFrame then
+                            TargetFrame_UpdateAuras(FocusFrame)
+                        end
                     end,
                 }
             }
@@ -118,7 +120,9 @@ function DeBuffFilter:SetupOptions()
                             table.insert(self.db.profile.hiddenBuffs, val);
                             table.sort(self.db.profile.hiddenBuffs)
                             TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end
+                            if FocusFrame then
+                                TargetFrame_UpdateAuras(FocusFrame)
+                            end
                         end,
                     },
                     buffList = {
@@ -159,7 +163,9 @@ function DeBuffFilter:SetupOptions()
                         set = function(info, val)
                             self.db.profile.selfSize = val
                             TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end
+                            if FocusFrame then
+                                TargetFrame_UpdateAuras(FocusFrame)
+                            end
                         end
 
                     },
@@ -178,7 +184,9 @@ function DeBuffFilter:SetupOptions()
                         set = function(info, val)
                             self.db.profile.otherSize = val
                             TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end
+                            if FocusFrame then
+                                TargetFrame_UpdateAuras(FocusFrame)
+                            end
                         end
                     },
                     auraWidth = {
@@ -196,7 +204,9 @@ function DeBuffFilter:SetupOptions()
                         set = function(info, val)
                             self.db.profile.auraWidth = val
                             TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end
+                            if FocusFrame then
+                                TargetFrame_UpdateAuras(FocusFrame)
+                            end
                         end
                     },
                     verticalSpacing = {
@@ -214,7 +224,9 @@ function DeBuffFilter:SetupOptions()
                         set = function(info, val)
                             self.db.profile.verticalSpace = val
                             TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end
+                            if FocusFrame then
+                                TargetFrame_UpdateAuras(FocusFrame)
+                            end
                         end
                     },
                     horizontalSpacing = {
@@ -232,7 +244,9 @@ function DeBuffFilter:SetupOptions()
                         set = function(info, val)
                             self.db.profile.horizontalSpace = val
                             TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end
+                            if FocusFrame then
+                                TargetFrame_UpdateAuras(FocusFrame)
+                            end
                         end
                     },
                 },
@@ -299,7 +313,10 @@ function DeBuffFilter:SetupOptions()
     LibStub("AceConfig-3.0"):RegisterOptionsTable(AddonName .. "_blizz", options)
     LibStub("AceConfigDialog-3.0"):AddToBlizOptions(AddonName .. "_blizz", "|cff4693E6DeBuffFilter|r")
     LibStub("AceConfig-3.0"):RegisterOptionsTable(AddonName, self.options)
-    LibStub("AceConsole-3.0"):RegisterChatCommand("dbf", function() HideUIPanel(SettingsPanel) LibStub("AceConfigDialog-3.0"):Open("DeBuffFilter") end)
+    LibStub("AceConsole-3.0"):RegisterChatCommand("dbf", function()
+        HideUIPanel(SettingsPanel)
+        LibStub("AceConfigDialog-3.0"):Open("DeBuffFilter")
+    end)
 end
 
 function DeBuffFilter:Blacklisted(name)
@@ -327,32 +344,32 @@ end
 local function adjustCastbar(frame)
     local parentFrame = frame:GetParent()
 
-    if ( frame.boss ) then
+    if (frame.boss) then
         frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 10 );
-    elseif ( parentFrame.haveToT ) then
+        frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 10);
+    elseif (parentFrame.haveToT) then
         if parentFrame.buffsOnTop or (parentFrame.auraRows <= 1) then
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -25 );
+            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -25);
         else
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15);
         end
-    elseif ( parentFrame.haveElite ) then
-        if ( parentFrame.buffsOnTop or parentFrame.auraRows <= 1 ) then
+    elseif (parentFrame.haveElite) then
+        if (parentFrame.buffsOnTop or parentFrame.auraRows <= 1) then
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -5 );
+            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -5);
         else
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15);
         end
     else
-        if ( (not parentFrame.buffsOnTop) and parentFrame.auraRows > 0 ) then
+        if ((not parentFrame.buffsOnTop) and parentFrame.auraRows > 0) then
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15);
         else
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 7 );
+            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 7);
         end
     end
 end
@@ -608,11 +625,18 @@ local function Filterino(self)
     local playerIsTarget = UnitIsUnit("player", self.unit);
 
     for i = 1, MAX_TARGET_BUFFS do
-        local buffName, icon, _, _, _, _, caster, canStealOrPurge = UnitBuff(self.unit, i, "HELPFUL");
+        local buffName, icon, _, debuffType, _, _, caster, canStealOrPurge = UnitBuff(self.unit, i, "HELPFUL");
         if buffName then
             local frameName = selfName .. "Buff" .. i
             local frameStealable = _G[frameName .. "Stealable"]
             local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
+            local modifier = 1.3
+            local stockR, stockG, stockB = 1, 1, 1
+
+            if IsAddOnLoaded("RougeUI") and (RougeUI.Lorti or RougeUI.Roug or RougeUI.Modern) then
+                modifier = 2.06
+                stockR, stockG, stockB = 1, 1, 0.75
+            end
 
             if DeBuffFilter.db.profile.customHighlights then
                 local customColor = DeBuffFilter.db.profile.customHighlightColors[buffName]
@@ -620,14 +644,14 @@ local function Filterino(self)
                     -- and isEnemy
                     local r, g, b, a = customColor.r, customColor.g, customColor.b, customColor.a
                     frameStealable:Show()
-                    frameStealable:SetHeight(buffSize * 1.3)
-                    frameStealable:SetWidth(buffSize * 1.3)
+                    frameStealable:SetHeight(buffSize * modifier)
+                    frameStealable:SetWidth(buffSize * modifier)
                     frameStealable:SetVertexColor(r, g, b, a)
-                elseif (not playerIsTarget and canStealOrPurge) then
+                elseif (not playerIsTarget and UnitIsEnemy("player", self.unit) and (canStealOrPurge or (debuffType == "Magic" and isClassic))) then
                     frameStealable:Show()
-                    frameStealable:SetVertexColor(1, 1, 1)
-                    frameStealable:SetHeight(buffSize * 1.3)
-                    frameStealable:SetWidth(buffSize * 1.3)
+                    frameStealable:SetVertexColor(stockR, stockG, stockB)
+                    frameStealable:SetHeight(buffSize * modifier)
+                    frameStealable:SetWidth(buffSize * modifier)
                 else
                     frameStealable:Hide()
                 end
