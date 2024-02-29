@@ -623,6 +623,7 @@ local function Filterino(self)
     local numDebuffs, numBuffs = 0, 0
     local numDebuff, numBuff = 0, 0
     local playerIsTarget = UnitIsUnit("player", self.unit);
+    local isEnemy = UnitIsEnemy("player", self.unit)
 
     for i = 1, MAX_TARGET_BUFFS do
         local buffName, icon, _, debuffType, _, _, caster, canStealOrPurge = UnitBuff(self.unit, i, "HELPFUL");
@@ -647,11 +648,14 @@ local function Filterino(self)
                     frameStealable:SetHeight(buffSize * modifier)
                     frameStealable:SetWidth(buffSize * modifier)
                     frameStealable:SetVertexColor(r, g, b, a)
-                elseif (not playerIsTarget and UnitIsEnemy("player", self.unit) and (canStealOrPurge or (debuffType == "Magic" and isClassic))) then
+                elseif (not playerIsTarget and isEnemy and (canStealOrPurge or (debuffType == "Magic" and isClassic))) then
                     frameStealable:Show()
                     frameStealable:SetVertexColor(stockR, stockG, stockB)
                     frameStealable:SetHeight(buffSize * modifier)
                     frameStealable:SetWidth(buffSize * modifier)
+                    if modifier == 2.06 then
+                        frameStealable:SetDesaturated(true)
+                    end
                 else
                     frameStealable:Hide()
                 end
