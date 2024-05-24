@@ -415,13 +415,18 @@ local function RealWidth(frame, auraName, width)
 end
 
 local function maxRows(self, width, mirror, auraName)
-    local haveTargetofTarget
+    local haveTargetofTarget = self.totFrame and self.totFrame:IsShown()
+    local debuffsShown = false
+    local rows = self.auraRows + (self.debuffRows or 0)
 
-    if self.totFrame ~= nil then
-        haveTargetofTarget = self.totFrame:IsShown();
+    if (auraName == "TargetFrameDebuff" or auraName == "FocusFrameDebuff") then
+        if self.debuffRows and self.debuffRows <= 2 then
+            debuffsShown = true
+        end
+        rows = self.auraRows
     end
 
-    if (haveTargetofTarget and self.auraRows <= 2) and not mirror then
+    if (haveTargetofTarget and ((rows <= 2) or debuffsShown) and not mirror) then
         return RealWidth(self, auraName, width)
     else
         return width
@@ -455,16 +460,6 @@ local function UpdateBuffAnchor(self, buffName, index, numDebuffs, anchorIndex, 
             buff:ClearAllPoints()
             buff:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
         else
-            -- Fix circular dependency i've created
-            local _, a = self.debuffs:GetPoint()
-            if a then
-                local _, b = a:GetPoint()
-                if b == self.buffs then
-                    self.debuffs:ClearAllPoints()
-                    self.debuffs:SetPoint(point .. "LEFT", self, point .. "LEFT", 0, 0)
-                    self.debuffs:SetPoint(relativePoint .. "LEFT", self, relativePoint .. "LEFT", 0, -auraOffsetY)
-                end
-            end
             -- unit is not friendly and we have debuffs...buffs start on bottom
             buff:ClearAllPoints()
             buff:SetPoint(point .. "LEFT", self.debuffs, relativePoint .. "LEFT", 0, -offsetY);
@@ -614,6 +609,32 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
     end
 end
 
+local function CalculateDebuffRows(frame, numAuras, caster, auraName, mirror, offsetX)
+    local LARGE_AURA_SIZE = DeBuffFilter.db.profile.selfSize
+    local SMALL_AURA_SIZE = DeBuffFilter.db.profile.otherSize
+    local maxRowWidth = DeBuffFilter.db.profile.auraWidth
+    local size
+    local rowWidth = 0
+    local numRows = 1
+
+    for i = 1, numAuras do
+        if caster and ShouldAuraBeLarge(caster) then
+            size = LARGE_AURA_SIZE
+        else
+            size = SMALL_AURA_SIZE
+        end
+
+        if (rowWidth > maxRows(frame, maxRowWidth, mirror, auraName)) then
+            numRows = numRows + 1
+            rowWidth = size
+            frame.debuffRows = frame.debuffRows + 1
+        else
+            rowWidth = rowWidth + size + offsetX
+        end
+    end
+    frame.debuffRows = numRows
+end
+
 local function Filterino(self)
     if self and (not (self == TargetFrame or self == FocusFrame) or self:IsForbidden()) then
         return
@@ -671,12 +692,14 @@ local function Filterino(self)
     local index = 1;
 
     local maxDebuffs = self.maxDebuffs or MAX_TARGET_DEBUFFS;
+    local casterName
     while (frameNum <= maxDebuffs and index <= maxDebuffs) do
         local debuffName, _, _, debuffType, _, _, caster, _, _, _, _, _, casterIsPlayer, nameplateShowAll = UnitDebuff(self.unit, index, "INCLUDE_NAME_PLATE_ONLY")
         if debuffName then
             if (TargetFrame_ShouldShowDebuffs(self.unit, caster, nameplateShowAll, casterIsPlayer)) then
                 numDebuffs = numDebuffs + 1;
                 frameNum = frameNum + 1;
+                casterName = caster
                 if not DeBuffFilter:Blacklisted(debuffName) then
                     numDebuff = numDebuff + 1
                 end
@@ -688,6 +711,7 @@ local function Filterino(self)
     end
 
     self.auraRows = 0
+    self.debuffRows = 0
 
     local mirrorAurasVertically = false
     if self.buffsOnTop then
@@ -699,13 +723,12 @@ local function Filterino(self)
 
     local offsetX = DeBuffFilter.db.profile.horizontalSpace
 
-    if UnitIsFriend("player", self.unit) then
-        updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
-        updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
-    else
-        updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
-        updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+    if isEnemy and numDebuffs > 0 then
+        CalculateDebuffRows(self, numDebuffs, casterName,selfName .. "Debuff", mirrorAurasVertically, offsetX)
     end
+
+    updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+    updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
 
     if self.spellbar then
         Target_Spellbar_AdjustPosition(self.spellbar)

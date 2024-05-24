@@ -1,6 +1,6 @@
-## Interface: 30403
+## Interface: 40400, 40401, 40402, 40403, 40404, 40405
 ## Title: DeBuffFilter
-## Version: v3.6
+## Version: v3.8
 ## Notes: discord.gg/CtxPasSQnQ
 ## Author: Xyz, Asuri (bugs, jk)
 ## SavedVariables: DeBuffFilterDB
