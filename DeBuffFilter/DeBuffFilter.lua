@@ -6,12 +6,13 @@ local MAX_TARGET_BUFFS = 32
 local AURA_START_Y = 32
 local AURA_START_X = 5
 local mabs, pairs, mfloor = math.abs, pairs, math.floor
+local tinsert, tsort = table.insert, table.sort
 local UnitBuff, UnitDebuff, UnitIsEnemy = _G.UnitBuff, _G.UnitDebuff, _G.UnitIsEnemy
 local UnitIsUnit, UnitIsOwnerOrControllerOfUnit, UnitIsFriend = _G.UnitIsUnit, _G.UnitIsOwnerOrControllerOfUnit, _G.UnitIsFriend
 local IsAddOnLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
 local GetAddOnInfo = C_AddOns and C_AddOns.GetAddOnInfo or GetAddOnInfo
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
-local isClassic = WOW_PROJECT_ID == WOW_PROJECT_CLASSIC
+local playerClass = select(2, UnitClass("player"))
 
 local defaults = {
     profile = {
@@ -23,6 +24,14 @@ local defaults = {
         horizontalSpace = 3,
         customHighlights = {},
         customHighlightColors = {},
+        customHighlightSizes = {},
+        sortBySize = false,
+        sortbyDispellable = false,
+        highlightAll = false,
+        enablePrioritySort = false,
+        customHighlightPriorities = {},
+        customShowOwnOnly = {},
+        removeDuplicates = {}
     }
 }
 
@@ -49,6 +58,7 @@ function DeBuffFilter:AddCustomHighlightOptions()
                         if cur_index > 0 then
                             table.remove(self.db.profile.customHighlights, cur_index)
                             self.db.profile.customHighlightColors[buff] = nil
+                            self.db.profile.customHighlightSizes[buff] = nil
                             self.options.args.highlightBuffs.args.buffList.args = self:AddCustomHighlightOptions()
                         end
                     end
@@ -72,8 +82,91 @@ function DeBuffFilter:AddCustomHighlightOptions()
                             TargetFrame_UpdateAuras(FocusFrame)
                         end
                     end,
+                },
+                size = {
+                    order = 3,
+                    type = "range",
+                    width = 2,
+                    name = "Size",
+                    desc = "Resize the (de)buff displayed",
+                    min = 17,
+                    max = 34,
+                    step = 1,
+                    get = function(info)
+                        local size = self.db.profile.customHighlightSizes[buff]
+                        if not size then
+                            size = 17
+                            self.db.profile.customHighlightSizes[buff] = size
+                        end
+                        return size
+                    end,
+                    set = function(info, val)
+                        self.db.profile.customHighlightSizes[buff] = val
+                        TargetFrame_UpdateAuras(TargetFrame)
+                        if FocusFrame then
+                            TargetFrame_UpdateAuras(FocusFrame)
+                        end
+                    end,
+                },
+                priority = {
+                    order = 4,
+                    type = "range",
+                    width = 2,
+                    name = "Priority",
+                    desc = "Set the priority of the aura",
+                    min = 0,
+                    max = 100,
+                    step = 1,
+                    get = function(info)
+                        local priority = self.db.profile.customHighlightPriorities[buff]
+                        if not priority then
+                            priority = 0
+                            self.db.profile.customHighlightPriorities[buff] = priority
+                        end
+                        return priority
+                    end,
+                    set = function(info, val)
+                        self.db.profile.customHighlightPriorities[buff] = val
+                        TargetFrame_UpdateAuras(TargetFrame)
+                        if FocusFrame then
+                            TargetFrame_UpdateAuras(FocusFrame)
+                        end
+                    end,
+                    hidden = function()
+                        return not self.db.profile.enablePrioritySort
+                    end,
+                },
+                separator = {
+                    order = 5,
+                    type = "description",
+                    name = "\n",
+                    width = "full"
+                },
+                ownOnly = {
+                    order = 6,
+                    type = "toggle",
+                    name = "Show own buff only",
+                    desc = "Hides the aura when it is not applied by you",
+                    get = function(info)
+                        return self.db.profile.customShowOwnOnly[buff]
+                    end,
+                    set = function(info, val)
+                        self.db.profile.customShowOwnOnly[buff] = val
+                    end,
+                },
+                removeDuplicates = {
+                    order = 7,
+                    type = "toggle",
+                    name = "Hide duplicate auras",
+                    desc = "Hides duplicate effects of this aura",
+                    get = function(info)
+                        return self.db.profile.removeDuplicates[buff]
+                    end,
+                    set = function(info, val)
+                        self.db.profile.removeDuplicates[buff] = val
+                    end,
                 }
-            }
+            },
         }
     end
 
@@ -117,8 +210,8 @@ function DeBuffFilter:SetupOptions()
                                     return
                                 end
                             end
-                            table.insert(self.db.profile.hiddenBuffs, val);
-                            table.sort(self.db.profile.hiddenBuffs)
+                            tinsert(self.db.profile.hiddenBuffs, val);
+                            tsort(self.db.profile.hiddenBuffs)
                             TargetFrame_UpdateAuras(TargetFrame);
                             if FocusFrame then
                                 TargetFrame_UpdateAuras(FocusFrame)
@@ -144,116 +237,179 @@ function DeBuffFilter:SetupOptions()
                 },
             },
             sizeoptions = {
-                name = "Resizer",
+                name = "General Settings",
                 type = "group",
                 order = 2,
                 args = {
-                    selfSize = {
+                    fancySliders = {
                         order = 1,
-                        width = 2,
-                        name = "My Debuffs/Buffs size",
-                        desc = "Resize your own (de)buffs displayed on target",
-                        type = "range",
-                        min = 17,
-                        max = 34,
-                        step = 1,
-                        get = function(info, val)
-                            return self.db.profile.selfSize
-                        end,
-                        set = function(info, val)
-                            self.db.profile.selfSize = val
-                            TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then
-                                TargetFrame_UpdateAuras(FocusFrame)
-                            end
-                        end
-
+                        type = "group",
+                        inline = false,
+                        name = "Resizer",
+                        args = {
+                            selfSize = {
+                                order = 1,
+                                width = 2,
+                                name = "My Debuffs/Buffs size",
+                                desc = "Resize your own (de)buffs displayed on target",
+                                type = "range",
+                                min = 17,
+                                max = 34,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.selfSize
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.selfSize = val
+                                    TargetFrame_UpdateAuras(TargetFrame);
+                                    if FocusFrame then
+                                        TargetFrame_UpdateAuras(FocusFrame)
+                                    end
+                                end
+                            },
+                            otherSize = {
+                                order = 2,
+                                width = 2,
+                                name = "Others Debuffs/Buffs size",
+                                desc = "Resize the (de)buffs casted by others that are displayed on target",
+                                type = "range",
+                                min = 17,
+                                max = 34,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.otherSize
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.otherSize = val
+                                    TargetFrame_UpdateAuras(TargetFrame);
+                                    if FocusFrame then
+                                        TargetFrame_UpdateAuras(FocusFrame)
+                                    end
+                                end
+                            },
+                            auraWidth = {
+                                order = 3,
+                                width = 2,
+                                name = "Aura row width",
+                                desc = "How many auras do you want per row?",
+                                type = "range",
+                                min = 108,
+                                max = 178,
+                                step = 14,
+                                get = function(info, val)
+                                    return self.db.profile.auraWidth
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.auraWidth = val
+                                    TargetFrame_UpdateAuras(TargetFrame);
+                                    if FocusFrame then
+                                        TargetFrame_UpdateAuras(FocusFrame)
+                                    end
+                                end
+                            },
+                            verticalSpacing = {
+                                order = 4,
+                                width = 2,
+                                name = "Vertical spacing",
+                                desc = "The spacing between aura rows",
+                                type = "range",
+                                min = 1,
+                                max = 50,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.verticalSpace
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.verticalSpace = val
+                                    TargetFrame_UpdateAuras(TargetFrame);
+                                    if FocusFrame then
+                                        TargetFrame_UpdateAuras(FocusFrame)
+                                    end
+                                end
+                            },
+                            horizontalSpacing = {
+                                order = 5,
+                                width = 2,
+                                name = "Horizontal spacing",
+                                desc = "The spacing between auras",
+                                type = "range",
+                                min = 3,
+                                max = 35,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.horizontalSpace
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.horizontalSpace = val
+                                    TargetFrame_UpdateAuras(TargetFrame);
+                                    if FocusFrame then
+                                        TargetFrame_UpdateAuras(FocusFrame)
+                                    end
+                                end
+                            },
+                        },
                     },
-                    otherSize = {
+                    fancyCheckboxes = {
                         order = 2,
-                        width = 2,
-                        name = "Others Debuffs/Buffs size",
-                        desc = "Resize the (de)buffs casted by others that are displayed on target",
-                        type = "range",
-                        min = 17,
-                        max = 34,
-                        step = 1,
-                        get = function(info, val)
-                            return self.db.profile.otherSize
-                        end,
-                        set = function(info, val)
-                            self.db.profile.otherSize = val
-                            TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then
-                                TargetFrame_UpdateAuras(FocusFrame)
-                            end
-                        end
-                    },
-                    auraWidth = {
-                        order = 3,
-                        width = 2,
-                        name = "Aura row width",
-                        desc = "How many auras do you want per row?",
-                        type = "range",
-                        min = 108,
-                        max = 178,
-                        step = 14,
-                        get = function(info, val)
-                            return self.db.profile.auraWidth
-                        end,
-                        set = function(info, val)
-                            self.db.profile.auraWidth = val
-                            TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then
-                                TargetFrame_UpdateAuras(FocusFrame)
-                            end
-                        end
-                    },
-                    verticalSpacing = {
-                        order = 4,
-                        width = 2,
-                        name = "Vertical spacing",
-                        desc = "The spacing between aura rows",
-                        type = "range",
-                        min = 1,
-                        max = 50,
-                        step = 1,
-                        get = function(info, val)
-                            return self.db.profile.verticalSpace
-                        end,
-                        set = function(info, val)
-                            self.db.profile.verticalSpace = val
-                            TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then
-                                TargetFrame_UpdateAuras(FocusFrame)
-                            end
-                        end
-                    },
-                    horizontalSpacing = {
-                        order = 5,
-                        width = 2,
-                        name = "Horizontal spacing",
-                        desc = "The spacing between auras",
-                        type = "range",
-                        min = 3,
-                        max = 35,
-                        step = 1,
-                        get = function(info, val)
-                            return self.db.profile.horizontalSpace
-                        end,
-                        set = function(info, val)
-                            self.db.profile.horizontalSpace = val
-                            TargetFrame_UpdateAuras(TargetFrame);
-                            if FocusFrame then
-                                TargetFrame_UpdateAuras(FocusFrame)
-                            end
-                        end
+                        type = "group",
+                        inline = false,
+                        name = "Extra options",
+                        args = {
+                            sortBySize = {
+                                order = 1,
+                                type = "toggle",
+                                name = "Sort auras by size",
+                                desc = "Recommended when using a different size per aura",
+                                get = function()
+                                    return self.db.profile.sortBySize
+                                end,
+                                set = function(_, value)
+                                    self.db.profile.sortBySize = value
+                                end,
+                            },
+                            sortbyDispellable = {
+                                order = 2,
+                                type = "toggle",
+                                name = "Sort by dispellable",
+                                desc = "Shows dispellable buffs first, unless size or priority sorting is enabled",
+                                get = function()
+                                    return self.db.profile.sortbyDispellable
+                                end,
+                                set = function(_, value)
+                                    self.db.profile.sortbyDispellable = value
+                                end,
+                            },
+                            highlightAll = {
+                                order = 3,
+                                type = "toggle",
+                                name = "Highlight magic buffs",
+                                desc = "Shows a glowing border on all dispellable magic buffs",
+                                get = function()
+                                    return self.db.profile.highlightAll
+                                end,
+                                set = function(_, value)
+                                    self.db.profile.highlightAll = value
+                                end,
+                            },
+                            enablePrioritySort = {
+                                order = 4,
+                                type = "toggle",
+                                name = "Enable priority slider",
+                                desc = "When enabled 'auras-specific customizations' will display an extra slider",
+                                get = function()
+                                    return self.db.profile.enablePrioritySort
+                                end,
+                                set = function(_, value)
+                                    self.db.profile.enablePrioritySort = value
+                                end,
+                            },
+                        },
                     },
                 },
             },
             highlightBuffs = {
                 type = "group",
-                name = "Custom Highlights",
+                name = "Aura-specific customization",
                 childGroups = "tree",
                 order = 3,
                 args = {
@@ -274,9 +430,9 @@ function DeBuffFilter:SetupOptions()
                                 end
                             end
 
-                            table.insert(self.db.profile.customHighlights, val)
-                            table.sort(self.db.profile.customHighlights)
-                            self.db.profile.customHighlightColors[val] = { r = 1, g = 1, b = 1, a = 1 }
+                            tinsert(self.db.profile.customHighlights, val)
+                            tsort(self.db.profile.customHighlights)
+                            self.db.profile.customHighlightColors[val] = { r = 1, g = 1, b = 1, a = 0 }
 
                             self.options.args.highlightBuffs.args.buffList.args = self:AddCustomHighlightOptions()
                         end,
@@ -392,7 +548,7 @@ local function ShouldAuraBeLarge(caster)
     end
 end
 
-local function UpdateBuffAnchor(self, buffName, index, numDebuffs, anchorBuff, size, offsetX, offsetY, mirrorVertically, newRow)
+local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, offsetX, offsetY, mirrorVertically, newRow)
     --For mirroring vertically
     local point, relativePoint;
     local startY, auraOffsetY;
@@ -412,37 +568,44 @@ local function UpdateBuffAnchor(self, buffName, index, numDebuffs, anchorBuff, s
         auraOffsetY = DeBuffFilter.db.profile.verticalSpace;
     end
 
-    local buff = _G[buffName .. index];
-    buff:ClearAllPoints()
+    buffName:ClearAllPoints()
 
-    if (index == 1) or anchorBuff == nil then
+    if anchorBuff == nil then
         if (UnitIsFriend("player", self.unit) or numDebuffs == 0) then
             -- unit is friendly or there are no debuffs...buffs start on top
-            buff:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
+            buffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
         else
+            local _, a = self.debuffs:GetPoint()
+            if a then
+                local _, b = a:GetPoint()
+                if b == self.buffs then
+                    self.debuffs:ClearAllPoints()
+                    self.debuffs:SetPoint(point .. "LEFT", self, point .. "LEFT", 0, 0)
+                    self.debuffs:SetPoint(relativePoint .. "LEFT", self, relativePoint .. "LEFT", 0, -auraOffsetY)
+                end
+            end
             -- unit is not friendly and we have debuffs...buffs start on bottom
-            buff:SetPoint(point .. "LEFT", self.debuffs, relativePoint .. "LEFT", 0, -offsetY);
+            buffName:SetPoint(point .. "LEFT", self.debuffs, relativePoint .. "LEFT", 0, -offsetY);
         end
         self.buffs:ClearAllPoints()
-        self.buffs:SetPoint(point .. "LEFT", buff, point .. "LEFT", 0, 0);
-        self.buffs:SetPoint(relativePoint .. "LEFT", buff, relativePoint .. "LEFT", 0, -auraOffsetY);
-        self.spellbarAnchor = buff;
+        self.buffs:SetPoint(point .. "LEFT", buffName, point .. "LEFT", 0, 0);
+        self.buffs:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.spellbarAnchor = buffName;
     elseif newRow then
-        buff:SetPoint(point .. "LEFT", anchorBuff, relativePoint .. "LEFT", 0, -offsetY);
+        buffName:SetPoint(point .. "LEFT", anchorBuff, relativePoint .. "LEFT", 0, -offsetY);
         self.buffs:ClearAllPoints()
-        self.buffs:SetPoint(relativePoint .. "LEFT", buff, relativePoint .. "LEFT", 0, -auraOffsetY);
-        self.spellbarAnchor = buff;
+        self.buffs:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.spellbarAnchor = buffName;
     else
-        buff:SetPoint(point .. "LEFT", anchorBuff, point .. "RIGHT", offsetX, 0);
+        buffName:SetPoint(point .. "LEFT", anchorBuff, point .. "RIGHT", offsetX, 0);
     end
 
     -- Resize
-    buff:SetWidth(size);
-    buff:SetHeight(size);
+    buffName:SetWidth(size);
+    buffName:SetHeight(size);
 end
 
-local function UpdateDebuffAnchor(self, debuffName, index, numBuffs, anchorDebuff, size, offsetX, offsetY, mirrorVertically, newRow)
-    local buff = _G[debuffName .. index];
+local function UpdateDebuffAnchor(self, debuffName, numBuffs, anchorDebuff, size, offsetX, offsetY, mirrorVertically, newRow)
     local isFriend = UnitIsFriend("player", self.unit);
 
     --For mirroring vertically
@@ -464,37 +627,37 @@ local function UpdateDebuffAnchor(self, debuffName, index, numBuffs, anchorDebuf
         auraOffsetY = DeBuffFilter.db.profile.verticalSpace;
     end
 
-    buff:ClearAllPoints()
+    debuffName:ClearAllPoints()
 
-    if (index == 1) or anchorDebuff == nil then
+    if anchorDebuff == nil then
         if (isFriend and numBuffs > 0) then
             -- unit is friendly and there are buffs...debuffs start on bottom
-            buff:SetPoint(point .. "LEFT", self.buffs, relativePoint .. "LEFT", 0, -offsetY);
+            debuffName:SetPoint(point .. "LEFT", self.buffs, relativePoint .. "LEFT", 0, -offsetY);
         else
             -- unit is not friendly or there are no buffs...debuffs start on top
-            buff:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
+            debuffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
         end
         self.debuffs:ClearAllPoints()
-        self.debuffs:SetPoint(point .. "LEFT", buff, point .. "LEFT", 0, 0);
-        self.debuffs:SetPoint(relativePoint .. "LEFT", buff, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.debuffs:SetPoint(point .. "LEFT", debuffName, point .. "LEFT", 0, 0);
+        self.debuffs:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY);
         if ((isFriend) or (not isFriend and numBuffs == 0)) then
-            self.spellbarAnchor = buff;
+            self.spellbarAnchor = debuffName;
         end
     elseif newRow then
-        buff:SetPoint(point .. "LEFT", anchorDebuff, relativePoint .. "LEFT", 0, -offsetY);
+        debuffName:SetPoint(point .. "LEFT", anchorDebuff, relativePoint .. "LEFT", 0, -offsetY);
         self.debuffs:ClearAllPoints()
-        self.debuffs:SetPoint(relativePoint .. "LEFT", buff, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.debuffs:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY);
         if ((isFriend) or (not isFriend and numBuffs == 0)) then
-            self.spellbarAnchor = buff;
+            self.spellbarAnchor = debuffName;
         end
     else
-        buff:SetPoint(point .. "LEFT", anchorDebuff, point .. "RIGHT", offsetX, 0);
+        debuffName:SetPoint(point .. "LEFT", anchorDebuff, point .. "RIGHT", offsetX, 0);
     end
 
     -- Resize
-    buff:SetWidth(size);
-    buff:SetHeight(size);
-    local debuffFrame = _G[debuffName .. index .. "Border"];
+    debuffName:SetWidth(size);
+    debuffName:SetHeight(size);
+    local debuffFrame = _G[debuffName:GetName() .. "Border"];
     if debuffFrame then
         debuffFrame:SetWidth(size + 2);
         debuffFrame:SetHeight(size + 2);
@@ -512,16 +675,158 @@ local function GetFramePosition(frame)
     return left, top, bottom
 end
 
+local function sizeSorter(a, b)
+    return a.size > b.size
+end
+
+local function typeSort(a, b)
+    if playerClass == "ROGUE" and (a.dispelType == "" and b.dispelType ~= "") then
+        return true
+    elseif playerClass == "ROGUE" and (a.dispelType ~= "" and b.dispelType == "") then
+            return false
+    elseif a.dispelType == "Magic" and b.dispelType ~= "Magic" then
+        return true
+    elseif a.dispelType ~= "Magic" and b.dispelType == "Magic" then
+        return false
+    else
+        return a.index < b.index
+    end
+end
+
+local function prioritySort(a, b)
+    return a.prio > b.prio
+end
+
+local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updateFunc, offsetX, mirrorAurasVertically)
+    local LARGE_AURA_SIZE = DeBuffFilter.db.profile.selfSize
+    local SMALL_AURA_SIZE = DeBuffFilter.db.profile.otherSize
+    local maxRowWidth = DeBuffFilter.db.profile.auraWidth
+    local yDistance = DeBuffFilter.db.profile.verticalSpace
+    local offsetY = yDistance
+    local size, biggestAura
+    local rowWidth = 0
+    local anchorRowAura, lastBuff = nil, nil
+    local firstBuffonRow = 1
+    local haveTargetofTarget = frame.totFrame and frame.totFrame:IsShown()
+    local totFrameX, totFrameTop, totFrameBottom = GetFramePosition(frame.totFrame)
+    local currentX, currentY
+    local auras, processedSpellIDs = {}, {}
+
+    for i = 1, numAuras do
+        local filter
+        if updateFunc == UpdateBuffAnchor then
+            filter = "HELPFUL"
+        else
+            filter = "HARMFUL"
+        end
+
+        local aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
+        if aura and aura.name then
+            if DeBuffFilter.db.profile.customHighlightSizes[aura.name] then
+                size = DeBuffFilter.db.profile.customHighlightSizes[aura.name]
+            else
+                if aura.sourceUnit and ShouldAuraBeLarge(aura.sourceUnit) then
+                    size = LARGE_AURA_SIZE
+                else
+                    size = SMALL_AURA_SIZE
+                end
+            end
+
+            if aura.dispelName == nil then
+                aura.dispelName = "GG"
+            end
+
+            local priority = DeBuffFilter.db.profile.customHighlightPriorities[aura.name] or 0
+            tinsert(auras, { size = size,
+                             name = aura.name,
+                             dbf = _G[auraName .. i],
+                             dispelType = aura.dispelName,
+                             prio = priority,
+                             source = aura.sourceUnit,
+                             index = i,
+                             spellId = aura.spellId
+            })
+        end
+    end
+
+    if DeBuffFilter.db.profile.sortbyDispellable then
+        tsort(auras, typeSort)
+    end
+
+    if DeBuffFilter.db.profile.sortBySize then
+        tsort(auras, sizeSorter)
+    end
+
+    if DeBuffFilter.db.profile.enablePrioritySort then
+        tsort(auras, prioritySort)
+    end
+
+    for _, auraData in ipairs(auras) do
+        local size = auraData.size
+        local aura = auraData.dbf
+        local source = auraData.source
+        local ownOnly = DeBuffFilter.db.profile.customShowOwnOnly[auraData.name]
+
+        if not DeBuffFilter:Blacklisted(auraData.name) and (not ownOnly or (ownOnly and auraData.source == "player")) and not processedSpellIDs[auraData.spellId] then
+            if DeBuffFilter.db.profile.removeDuplicates[auraData.name] then
+                processedSpellIDs[auraData.spellId] = true
+            end
+
+            if lastBuff == nil then
+                rowWidth = size;
+                frame.auraRows = frame.auraRows + 1;
+                anchorRowAura = aura
+            else
+                rowWidth = rowWidth + size + offsetX;
+            end
+
+            if not biggestAura or (biggestAura and (biggestAura < size)) then
+                biggestAura = size
+            end
+
+            local verticalDistance = currentY and (currentY - totFrameBottom) or 0
+            local horizontalDistance = rowWidth
+
+            if currentX then
+                horizontalDistance = (mfloor(mabs((currentX + size + offsetX) - totFrameX))) + 2 -- Cheat a bit
+            end
+
+            if (haveTargetofTarget and (horizontalDistance <= size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
+                offsetY = biggestAura and mabs(biggestAura - size) + (yDistance * 2) or offsetY
+                updateFunc(frame, aura, numOppositeAuras, anchorRowAura, size, offsetX, offsetY, mirrorAurasVertically, true);
+                rowWidth = size;
+                frame.auraRows = frame.auraRows + 1
+                anchorRowAura = aura
+                offsetY = yDistance;
+                biggestAura = nil
+            else
+                updateFunc(frame, aura, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically);
+            end
+
+            lastBuff = aura
+            currentX, currentY = aura:GetLeft(), aura:GetTop()
+        else
+            if aura then
+                aura:ClearAllPoints()
+                aura:SetPoint("CENTER", frame, "CENTER", 100000, 100000)
+            end
+        end
+    end
+end
+
 local function updatePositions(frame, auraName, numAuras, numOppositeAuras, updateFunc, offsetX, mirrorAurasVertically)
     local LARGE_AURA_SIZE = DeBuffFilter.db.profile.selfSize
     local SMALL_AURA_SIZE = DeBuffFilter.db.profile.otherSize
     local maxRowWidth = DeBuffFilter.db.profile.auraWidth
-    local offsetY = DeBuffFilter.db.profile.verticalSpace
-    local size
+    local yDistance = DeBuffFilter.db.profile.verticalSpace
+    local offsetY = yDistance
+    local size, biggestAura
     local rowWidth = 0
     local anchorRowAura, lastBuff = nil, nil
     local haveTargetofTarget = frame.totFrame and frame.totFrame:IsShown()
     local totFrameX, totFrameTop, totFrameBottom = GetFramePosition(frame.totFrame)
+    local currentX, currentY
+    local processedSpellIDs = {}
 
     for i = 1, numAuras do
         local filter
@@ -534,7 +839,13 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
         local aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
         if aura and aura.name and aura.icon then
             local dbf = _G[auraName .. i]
-            if not DeBuffFilter:Blacklisted(aura.name) then
+            local ownOnly = DeBuffFilter.db.profile.customShowOwnOnly[aura.name]
+            if not DeBuffFilter:Blacklisted(aura.name) and (not ownOnly or (ownOnly and aura.sourceUnit == "player")) and not processedSpellIDs[aura.spellId] then
+
+                if DeBuffFilter.db.profile.removeDuplicates[aura.name] then
+                    processedSpellIDs[aura.spellId] = true
+                end
+
                 if aura.sourceUnit and ShouldAuraBeLarge(aura.sourceUnit) then
                     size = LARGE_AURA_SIZE
                     offsetY = DeBuffFilter.db.profile.verticalSpace + DeBuffFilter.db.profile.verticalSpace
@@ -542,7 +853,16 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                     size = SMALL_AURA_SIZE
                 end
 
-                if (i == 1) or lastBuff == nil then
+                local customSize = DeBuffFilter.db.profile.customHighlightSizes[aura.name]
+                if customSize then
+                    size = customSize
+                end
+
+                if not biggestAura or (biggestAura and (biggestAura < size)) then
+                    biggestAura = size
+                end
+
+                if lastBuff == nil then
                     rowWidth = size;
                     frame.auraRows = frame.auraRows + 1;
                     anchorRowAura = dbf
@@ -550,28 +870,27 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                     rowWidth = rowWidth + size + offsetX;
                 end
 
-                local auraX, auraTop = GetFramePosition(dbf)
-                local verticalDistance = auraTop - totFrameBottom
-                local prevX = lastBuff and GetFramePosition(lastBuff)
-                local horizontalDistance
+                local verticalDistance = currentY and (currentY - totFrameBottom) or 0
+                local horizontalDistance = rowWidth
 
-                if prevX then
-                    horizontalDistance = (mfloor(mabs((prevX + size + offsetX) - totFrameX)))
-                else
-                    horizontalDistance = mfloor(mabs(auraX - totFrameX))
+                if currentX then
+                    horizontalDistance = (mfloor(mabs((currentX + size + offsetX) - totFrameX))) + 2 -- Cheat a bit
                 end
 
                 if (haveTargetofTarget and (horizontalDistance <= size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
-                    updateFunc(frame, auraName, i, numOppositeAuras, anchorRowAura, size, offsetX, offsetY, mirrorAurasVertically, true)
+                    offsetY = biggestAura and mabs(biggestAura - size) + (yDistance * 2) or offsetY
+                    updateFunc(frame, dbf, numOppositeAuras, anchorRowAura, size, offsetX, offsetY, mirrorAurasVertically, true)
                     rowWidth = size;
                     frame.auraRows = frame.auraRows + 1;
-                    offsetY = DeBuffFilter.db.profile.verticalSpace;
+                    offsetY = yDistance
                     anchorRowAura = dbf
+                    biggestAura = nil
                 else
-                    updateFunc(frame, auraName, i, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically)
+                    updateFunc(frame, dbf, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically)
                 end
 
                 lastBuff = dbf
+                currentX, currentY = dbf:GetLeft(), dbf:GetTop()
             else
                 if dbf then
                     dbf:ClearAllPoints()
@@ -599,7 +918,7 @@ local function Filterino(self)
             local frameName = selfName .. "Buff" .. i
             local frameStealable = _G[frameName .. "Stealable"]
             local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
-            local modifier = 1.3
+            local modifier = 1.4
             local stockR, stockG, stockB = 1, 1, 1
 
             if IsAddOnLoaded("RougeUI") and (RougeUI.Lorti or RougeUI.Roug or RougeUI.Modern) then
@@ -607,16 +926,25 @@ local function Filterino(self)
                 stockR, stockG, stockB = 1, 1, 0.75
             end
 
+            if DeBuffFilter.db.profile.customHighlightSizes[buffName] then
+                buffSize = DeBuffFilter.db.profile.customHighlightSizes[buffName]
+            end
+
             if DeBuffFilter.db.profile.customHighlights then
                 local customColor = DeBuffFilter.db.profile.customHighlightColors[buffName]
-                if icon and customColor and not playerIsTarget then
-                    -- and isEnemy
+                if icon and (customColor or (DeBuffFilter.db.profile.highlightAll and debuffType == "Magic")) and not playerIsTarget then
+                    if not customColor then
+                        customColor = { r = 1, g = 1, b = 0.85, a = 1 }
+                    end
                     local r, g, b, a = customColor.r, customColor.g, customColor.b, customColor.a
                     frameStealable:Show()
                     frameStealable:SetHeight(buffSize * modifier)
                     frameStealable:SetWidth(buffSize * modifier)
                     frameStealable:SetVertexColor(r, g, b, a)
-                elseif (not playerIsTarget and isEnemy and (canStealOrPurge or (debuffType == "Magic" and isClassic))) then
+                    if modifier == 2.06 then
+                        frameStealable:SetDesaturated(true)
+                    end
+                elseif (not playerIsTarget and isEnemy and canStealOrPurge) then
                     frameStealable:Show()
                     frameStealable:SetVertexColor(stockR, stockG, stockB)
                     frameStealable:SetHeight(buffSize * modifier)
@@ -639,14 +967,12 @@ local function Filterino(self)
     local index = 1;
 
     local maxDebuffs = self.maxDebuffs or MAX_TARGET_DEBUFFS;
-    local casterName
     while (frameNum <= maxDebuffs and index <= maxDebuffs) do
         local debuffName, _, _, debuffType, _, _, caster, _, _, _, _, _, casterIsPlayer, nameplateShowAll = UnitDebuff(self.unit, index, "INCLUDE_NAME_PLATE_ONLY")
         if debuffName then
             if (TargetFrame_ShouldShowDebuffs(self.unit, caster, nameplateShowAll, casterIsPlayer)) then
                 numDebuffs = numDebuffs + 1;
                 frameNum = frameNum + 1;
-                casterName = caster
                 if not DeBuffFilter:Blacklisted(debuffName) then
                     numDebuff = numDebuff + 1
                 end
@@ -658,13 +984,19 @@ local function Filterino(self)
     end
 
     local mirrorAurasVertically = self.buffsOnTop and true or false
-    local offsetX = DeBuffFilter.db.profile.horizontalSpace
+    local db = DeBuffFilter.db.profile
+    local offsetX = db.horizontalSpace
 
     self.auraRows = 0
     self.spellbarAnchor = nil
 
-    updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
-    updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+    if db.sortBySize or db.sortbyDispellable or db.enablePrioritySort then
+        auraSortBySize(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+        auraSortBySize(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+    else
+        updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+        updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+    end
 
     if self.spellbar then
         adjustCastbar(self.spellbar)
@@ -678,6 +1010,5 @@ DeBuffFilter.event:SetScript("OnEvent", function(self)
     hooksecurefunc("TargetFrame_UpdateAuras", Filterino)
     hooksecurefunc("Target_Spellbar_AdjustPosition", adjustCastbar)
 
-    self:UnregisterEvent("PLAYER_LOGIN")
-    self:SetScript("OnEvent", nil)
+    playerClass = select(2, UnitClass("player"))
 end)
