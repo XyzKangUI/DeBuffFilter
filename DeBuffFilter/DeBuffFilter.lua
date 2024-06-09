@@ -6,7 +6,7 @@ local MAX_TARGET_BUFFS = 32
 local AURA_START_Y = 32
 local AURA_START_X = 5
 local mabs, pairs, mfloor = math.abs, pairs, math.floor
-local tinsert, tsort = table.insert, table.sort
+local tinsert, tsort, tostring = table.insert, table.sort, tostring
 local UnitBuff, UnitDebuff, UnitIsEnemy = _G.UnitBuff, _G.UnitDebuff, _G.UnitIsEnemy
 local UnitIsUnit, UnitIsOwnerOrControllerOfUnit, UnitIsFriend = _G.UnitIsUnit, _G.UnitIsOwnerOrControllerOfUnit, _G.UnitIsFriend
 local IsAddOnLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
@@ -18,7 +18,7 @@ local defaults = {
     profile = {
         hiddenBuffs = {},
         selfSize = 21,
-        otherSize = 17,
+        otherSize = 20,
         auraWidth = 122,
         verticalSpace = 1,
         horizontalSpace = 3,
@@ -39,9 +39,11 @@ function DeBuffFilter:AddCustomHighlightOptions()
     local new_args = {}
 
     for _, buff in ipairs(self.db.profile.customHighlights) do
+        local buffName = tonumber(buff) and GetSpellInfo(buff) .. " (" .. buff .. ")" or buff
+
         new_args["highlight_" .. buff] = {
             type = "group",
-            name = buff,
+            name = buffName,
             args = {
                 delete = {
                     order = 1,
@@ -95,7 +97,7 @@ function DeBuffFilter:AddCustomHighlightOptions()
                     get = function(info)
                         local size = self.db.profile.customHighlightSizes[buff]
                         if not size then
-                            size = 17
+                            size = 20
                             self.db.profile.customHighlightSizes[buff] = size
                         end
                         return size
@@ -165,7 +167,14 @@ function DeBuffFilter:AddCustomHighlightOptions()
                     set = function(info, val)
                         self.db.profile.removeDuplicates[buff] = val
                     end,
-                }
+                },
+                spellTitle = {
+                    order = 0.5,
+                    type = "description",
+                    name = buffName,
+                    fontSize = "medium",
+                    width = "full",
+                },
             },
         }
     end
@@ -202,7 +211,8 @@ function DeBuffFilter:SetupOptions()
                         type = "input",
                         set = function(info, val)
                             if tonumber(val) then
-                                val = select(1, GetSpellInfo(val))
+                                if not GetSpellInfo(val) then return end
+                                val = tostring(val)
                             end
 
                             for _, value in ipairs(self.db.profile.hiddenBuffs) do
@@ -210,6 +220,7 @@ function DeBuffFilter:SetupOptions()
                                     return
                                 end
                             end
+
                             tinsert(self.db.profile.hiddenBuffs, val);
                             tsort(self.db.profile.hiddenBuffs)
                             TargetFrame_UpdateAuras(TargetFrame);
@@ -223,15 +234,32 @@ function DeBuffFilter:SetupOptions()
                         width = 1,
                         name = "Hidden Auras:",
                         type = "multiselect",
-                        values = self.db.profile.hiddenBuffs,
+                        values = function()
+                            local list = {}
+                            for _, value in pairs(self.db.profile.hiddenBuffs) do
+                                local spellName = GetSpellInfo(value)
+                                if spellName then
+                                    list[value] = spellName .. " (" .. value .. ")"
+                                else
+                                    list[value] = value
+                                end
+                            end
+                            return list
+                        end,
                         get = function(info, val)
                             return true;
                         end,
                         set = function(info, val)
-                            table.remove(self.db.profile.hiddenBuffs, val);
+                            for index, spellID in ipairs(self.db.profile.hiddenBuffs) do
+                                if spellID == val then
+                                    table.remove(self.db.profile.hiddenBuffs, index)
+                                    break
+                                end
+                            end
                         end,
                         confirm = function(info, val, v2)
-                            return "Delete " .. self.db.profile.hiddenBuffs[val] .. "?"
+                            local spellName = GetSpellInfo(val) or val
+                            return "Delete " .. spellName .. " (" .. val .. ")?"
                         end
                     },
                 },
@@ -353,7 +381,7 @@ function DeBuffFilter:SetupOptions()
                         order = 2,
                         type = "group",
                         inline = false,
-                        name = "Extra options",
+                        name = "Sorting options",
                         args = {
                             sortBySize = {
                                 order = 1,
@@ -421,7 +449,8 @@ function DeBuffFilter:SetupOptions()
                         type = "input",
                         set = function(info, val)
                             if tonumber(val) then
-                                val = select(1, GetSpellInfo(val))
+                                if not GetSpellInfo(val) then return end
+                                val = tostring(val)
                             end
 
                             for _, value in ipairs(self.db.profile.customHighlights) do
@@ -475,26 +504,14 @@ function DeBuffFilter:SetupOptions()
     end)
 end
 
-function DeBuffFilter:Blacklisted(name)
-    local val = false
+function DeBuffFilter:Blacklisted(value)
+    value = tostring(value)
     for _, blockedName in pairs(self.db.profile.hiddenBuffs) do
-        if blockedName == name then
-            val = true
-            break
+        if blockedName == value then
+            return true
         end
     end
-    return val
-end
-
-function DeBuffFilter:RFBuffs(name)
-    local val = false
-    for _, blockedName in pairs(self.db.profile.hiddenRaidAuras) do
-        if blockedName == name then
-            val = true
-            break
-        end
-    end
-    return val
+    return false
 end
 
 local function adjustCastbar(frame)
@@ -683,7 +700,7 @@ local function typeSort(a, b)
     if playerClass == "ROGUE" and (a.dispelType == "" and b.dispelType ~= "") then
         return true
     elseif playerClass == "ROGUE" and (a.dispelType ~= "" and b.dispelType == "") then
-            return false
+        return false
     elseif a.dispelType == "Magic" and b.dispelType ~= "Magic" then
         return true
     elseif a.dispelType ~= "Magic" and b.dispelType == "Magic" then
@@ -722,8 +739,9 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
 
         local aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
         if aura and aura.name then
-            if DeBuffFilter.db.profile.customHighlightSizes[aura.name] then
-                size = DeBuffFilter.db.profile.customHighlightSizes[aura.name]
+            local customSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(aura.spellId)] or DeBuffFilter.db.profile.customHighlightSizes[aura.name]
+            if customSize then
+                size = customSize
             else
                 if aura.sourceUnit and ShouldAuraBeLarge(aura.sourceUnit) then
                     size = LARGE_AURA_SIZE
@@ -765,10 +783,10 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
         local size = auraData.size
         local aura = auraData.dbf
         local source = auraData.source
-        local ownOnly = DeBuffFilter.db.profile.customShowOwnOnly[auraData.name]
+        local ownOnly = DeBuffFilter.db.profile.customShowOwnOnly[tostring(auraData.spellId)] or DeBuffFilter.db.profile.customShowOwnOnly[auraData.name]
 
-        if not DeBuffFilter:Blacklisted(auraData.name) and (not ownOnly or (ownOnly and auraData.source == "player")) and not processedSpellIDs[auraData.spellId] then
-            if DeBuffFilter.db.profile.removeDuplicates[auraData.name] then
+        if not (DeBuffFilter:Blacklisted(auraData.name) or DeBuffFilter:Blacklisted(auraData.spellId)) and (not ownOnly or (ownOnly and auraData.source == "player")) and not processedSpellIDs[auraData.spellId] then
+            if DeBuffFilter.db.profile.removeDuplicates[tostring(auraData.spellId)] or DeBuffFilter.db.profile.removeDuplicates[auraData.name] then
                 processedSpellIDs[auraData.spellId] = true
             end
 
@@ -839,10 +857,10 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
         local aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
         if aura and aura.name and aura.icon then
             local dbf = _G[auraName .. i]
-            local ownOnly = DeBuffFilter.db.profile.customShowOwnOnly[aura.name]
-            if not DeBuffFilter:Blacklisted(aura.name) and (not ownOnly or (ownOnly and aura.sourceUnit == "player")) and not processedSpellIDs[aura.spellId] then
+            local ownOnly = DeBuffFilter.db.profile.customShowOwnOnly[tostring(aura.spellId)] or DeBuffFilter.db.profile.customShowOwnOnly[aura.name]
+            if not (DeBuffFilter:Blacklisted(aura.name) or DeBuffFilter:Blacklisted(aura.spellId)) and (not ownOnly or (ownOnly and aura.sourceUnit == "player")) and not processedSpellIDs[aura.spellId] then
 
-                if DeBuffFilter.db.profile.removeDuplicates[aura.name] then
+                if DeBuffFilter.db.profile.removeDuplicates[tostring(aura.spellId)] or DeBuffFilter.db.profile.removeDuplicates[aura.name] then
                     processedSpellIDs[aura.spellId] = true
                 end
 
@@ -853,7 +871,7 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                     size = SMALL_AURA_SIZE
                 end
 
-                local customSize = DeBuffFilter.db.profile.customHighlightSizes[aura.name]
+                local customSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(aura.spellId)] or DeBuffFilter.db.profile.customHighlightSizes[aura.name]
                 if customSize then
                     size = customSize
                 end
@@ -906,6 +924,7 @@ local function Filterino(self)
         return
     end
 
+    local frame, frameName;
     local selfName = self:GetName()
     local numDebuffs, numBuffs = 0, 0
     local numDebuff, numBuff = 0, 0
@@ -913,12 +932,12 @@ local function Filterino(self)
     local isEnemy = UnitIsEnemy("player", self.unit)
 
     for i = 1, MAX_TARGET_BUFFS do
-        local buffName, icon, _, debuffType, _, _, caster, canStealOrPurge = UnitBuff(self.unit, i, "HELPFUL");
+        local buffName, icon, _, debuffType, _, _, caster, canStealOrPurge, _, spellId = UnitBuff(self.unit, i, "HELPFUL");
         if buffName then
-            local frameName = selfName .. "Buff" .. i
+            frameName = selfName .. "Buff" .. i
             local frameStealable = _G[frameName .. "Stealable"]
             local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
-            local modifier = 1.4
+            local modifier = 1.34
             local stockR, stockG, stockB = 1, 1, 1
 
             if IsAddOnLoaded("RougeUI") and (RougeUI.Lorti or RougeUI.Roug or RougeUI.Modern) then
@@ -926,13 +945,14 @@ local function Filterino(self)
                 stockR, stockG, stockB = 1, 1, 0.75
             end
 
-            if DeBuffFilter.db.profile.customHighlightSizes[buffName] then
-                buffSize = DeBuffFilter.db.profile.customHighlightSizes[buffName]
+            local newSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightSizes[buffName]
+            if newSize then
+                buffSize = newSize
             end
 
             if DeBuffFilter.db.profile.customHighlights then
-                local customColor = DeBuffFilter.db.profile.customHighlightColors[buffName]
-                if icon and (customColor or (DeBuffFilter.db.profile.highlightAll and debuffType == "Magic")) and not playerIsTarget then
+                local customColor = DeBuffFilter.db.profile.customHighlightColors[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightColors[buffName]
+                if icon and (customColor or (DeBuffFilter.db.profile.highlightAll and debuffType == "Magic")) then
                     if not customColor then
                         customColor = { r = 1, g = 1, b = 0.85, a = 1 }
                     end
@@ -957,7 +977,7 @@ local function Filterino(self)
                 end
             end
             numBuffs = numBuffs + 1;
-            if not DeBuffFilter:Blacklisted(buffName) then
+            if not (DeBuffFilter:Blacklisted(buffName) or DeBuffFilter:Blacklisted(spellId)) then
                 numBuff = numBuff + 1
             end
         end
@@ -968,12 +988,66 @@ local function Filterino(self)
 
     local maxDebuffs = self.maxDebuffs or MAX_TARGET_DEBUFFS;
     while (frameNum <= maxDebuffs and index <= maxDebuffs) do
-        local debuffName, _, _, debuffType, _, _, caster, _, _, _, _, _, casterIsPlayer, nameplateShowAll = UnitDebuff(self.unit, index, "INCLUDE_NAME_PLATE_ONLY")
+        local debuffName, icon, _, debuffType, _, _, caster, _, _, spellId, _, _, casterIsPlayer, nameplateShowAll = UnitDebuff(self.unit, index, "INCLUDE_NAME_PLATE_ONLY")
         if debuffName then
-            if (TargetFrame_ShouldShowDebuffs(self.unit, caster, nameplateShowAll, casterIsPlayer)) then
+            if icon and (TargetFrame_ShouldShowDebuffs(self.unit, caster, nameplateShowAll, casterIsPlayer)) then
+                frameName = selfName .. "Debuff" .. frameNum
+                frame = _G[frameName]
+                local debuffBorder = _G[frameName .. "Border"]
+
+                if DeBuffFilter.db.profile.customHighlights then
+                    local customColor = DeBuffFilter.db.profile.customHighlightColors[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightColors[debuffName]
+                    local modifier = 1.3
+                    local stockR, stockG, stockB = 1, 1, 1
+                    local texturePath = "Interface\\TargetingFrame\\UI-TargetingFrame-Stealable"
+
+                    if IsAddOnLoaded("RougeUI") and (RougeUI.Lorti or RougeUI.Roug or RougeUI.Modern) then
+                        modifier = 2.06
+                        stockR, stockG, stockB = 1, 1, 0.75
+                    end
+
+                    local frameStealable = _G[frameName .. "Stealable"]
+                    if not frameStealable and frame and customColor then
+                        frameStealable = frame:CreateTexture(frameName .. "Stealable", "OVERLAY")
+                        if modifier == 2.06 then
+                            texturePath = "Interface\\AddOns\\RougeUI\\textures\\newexp"
+                            frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
+                        end
+                        frameStealable:SetTexture(texturePath)
+                        frameStealable:SetSize(24, 24)
+                        frameStealable:SetPoint("CENTER", 0, 0)
+                        frameStealable:SetBlendMode("ADD")
+                    end
+
+                    if frameStealable then
+                        if customColor then
+                            local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
+
+                            local newSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightSizes[debuffName]
+                            if newSize then
+                                buffSize = newSize
+                            end
+
+                            local r, g, b, a = customColor.r, customColor.g, customColor.b, customColor.a
+                            frameStealable:Show()
+                            frameStealable:SetHeight(buffSize * modifier)
+                            frameStealable:SetWidth(buffSize * modifier)
+                            frameStealable:SetVertexColor(r, g, b, a)
+                            debuffBorder:SetShown(r == 0 and g == 0 and b == 0 or a == 0)
+
+                            if modifier == 2.06 then
+                                frameStealable:SetDesaturated(true)
+                            end
+                        else
+                            frameStealable:Hide()
+                            debuffBorder:Show()
+                        end
+                    end
+                end
+
                 numDebuffs = numDebuffs + 1;
                 frameNum = frameNum + 1;
-                if not DeBuffFilter:Blacklisted(debuffName) then
+                if not (DeBuffFilter:Blacklisted(debuffName) or DeBuffFilter:Blacklisted(spellId)) then
                     numDebuff = numDebuff + 1
                 end
             end
