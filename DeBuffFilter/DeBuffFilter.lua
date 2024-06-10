@@ -790,16 +790,16 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
                 processedSpellIDs[auraData.spellId] = true
             end
 
+            if source and ShouldAuraBeLarge(source) then
+                offsetY = DeBuffFilter.db.profile.verticalSpace * 2
+            end
+
             if lastBuff == nil then
                 rowWidth = size;
                 frame.auraRows = frame.auraRows + 1;
                 anchorRowAura = aura
             else
                 rowWidth = rowWidth + size + offsetX;
-            end
-
-            if not biggestAura or (biggestAura and (biggestAura < size)) then
-                biggestAura = size
             end
 
             local verticalDistance = currentY and (currentY - totFrameBottom) or 0
@@ -810,19 +810,25 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
             end
 
             if (haveTargetofTarget and (horizontalDistance <= size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
-                offsetY = biggestAura and mabs(biggestAura - size) + (yDistance * 2) or offsetY
+                if biggestAura > mfloor(anchorRowAura:GetSize() + 0.5) then
+                    offsetY = (yDistance * 2) + (biggestAura - anchorRowAura:GetSize())
+                end
                 updateFunc(frame, aura, numOppositeAuras, anchorRowAura, size, offsetX, offsetY, mirrorAurasVertically, true);
                 rowWidth = size;
                 frame.auraRows = frame.auraRows + 1
                 anchorRowAura = aura
                 offsetY = yDistance;
-                biggestAura = nil
+                biggestAura = size
             else
                 updateFunc(frame, aura, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically);
             end
 
             lastBuff = aura
             currentX, currentY = aura:GetLeft(), aura:GetTop()
+
+            if not biggestAura or (biggestAura and (biggestAura < size)) then
+                biggestAura = size
+            end
         else
             if aura then
                 aura:ClearAllPoints()
@@ -866,7 +872,7 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
 
                 if aura.sourceUnit and ShouldAuraBeLarge(aura.sourceUnit) then
                     size = LARGE_AURA_SIZE
-                    offsetY = DeBuffFilter.db.profile.verticalSpace + DeBuffFilter.db.profile.verticalSpace
+                    offsetY = DeBuffFilter.db.profile.verticalSpace * 2
                 else
                     size = SMALL_AURA_SIZE
                 end
@@ -874,10 +880,6 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                 local customSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(aura.spellId)] or DeBuffFilter.db.profile.customHighlightSizes[aura.name]
                 if customSize then
                     size = customSize
-                end
-
-                if not biggestAura or (biggestAura and (biggestAura < size)) then
-                    biggestAura = size
                 end
 
                 if lastBuff == nil then
@@ -896,19 +898,25 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                 end
 
                 if (haveTargetofTarget and (horizontalDistance <= size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
-                    offsetY = biggestAura and mabs(biggestAura - size) + (yDistance * 2) or offsetY
+                    if biggestAura > mfloor(anchorRowAura:GetSize() + 0.5) then
+                        offsetY = (yDistance * 2) + (biggestAura - anchorRowAura:GetSize())
+                    end
                     updateFunc(frame, dbf, numOppositeAuras, anchorRowAura, size, offsetX, offsetY, mirrorAurasVertically, true)
                     rowWidth = size;
                     frame.auraRows = frame.auraRows + 1;
                     offsetY = yDistance
                     anchorRowAura = dbf
-                    biggestAura = nil
+                    biggestAura = size
                 else
                     updateFunc(frame, dbf, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically)
                 end
 
                 lastBuff = dbf
                 currentX, currentY = dbf:GetLeft(), dbf:GetTop()
+
+                if not biggestAura or (biggestAura and (biggestAura < size)) then
+                    biggestAura = size
+                end
             else
                 if dbf then
                     dbf:ClearAllPoints()
