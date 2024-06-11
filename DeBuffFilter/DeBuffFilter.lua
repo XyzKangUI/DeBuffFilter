@@ -516,17 +516,18 @@ end
 
 local function adjustCastbar(frame)
     local parentFrame = frame:GetParent()
+    local yOffset = parentFrame.largestAura or 0
 
     if (frame.boss) then
         frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 10);
+        frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 10 - yOffset);
     elseif (parentFrame.haveToT) then
         if parentFrame.buffsOnTop or (parentFrame.auraRows <= 1) then
             frame:ClearAllPoints()
             frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -25);
         else
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15);
+            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15 - yOffset);
         end
     elseif (parentFrame.haveElite) then
         if (parentFrame.buffsOnTop or parentFrame.auraRows <= 1) then
@@ -534,15 +535,15 @@ local function adjustCastbar(frame)
             frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -5);
         else
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15);
+            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15 - yOffset);
         end
     else
         if ((not parentFrame.buffsOnTop) and parentFrame.auraRows > 0) then
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15);
+            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15 - yOffset);
         else
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 7);
+            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 7 - yOffset);
         end
     end
 end
@@ -791,13 +792,17 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
             end
 
             if source and ShouldAuraBeLarge(source) then
-                offsetY = DeBuffFilter.db.profile.verticalSpace * 2
+                offsetY = yDistance * 2
             end
 
             if lastBuff == nil then
                 rowWidth = size;
                 frame.auraRows = frame.auraRows + 1;
                 anchorRowAura = aura
+
+                if frame.largestAura then
+                    offsetY = frame.largestAura
+                end
             else
                 rowWidth = rowWidth + size + offsetX;
             end
@@ -818,7 +823,8 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
                 frame.auraRows = frame.auraRows + 1
                 anchorRowAura = aura
                 offsetY = yDistance;
-                biggestAura = size
+                biggestAura = nil
+                frame.largestAura = nil
             else
                 updateFunc(frame, aura, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically);
             end
@@ -828,6 +834,11 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
 
             if not biggestAura or (biggestAura and (biggestAura < size)) then
                 biggestAura = size
+            end
+
+            local calc = (yDistance * 2) + (biggestAura - anchorRowAura:GetSize())
+            if not frame.largestAura or (frame.largestAura and (frame.largestAura < calc)) then
+                frame.largestAura = calc
             end
         else
             if aura then
@@ -872,7 +883,7 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
 
                 if aura.sourceUnit and ShouldAuraBeLarge(aura.sourceUnit) then
                     size = LARGE_AURA_SIZE
-                    offsetY = DeBuffFilter.db.profile.verticalSpace * 2
+                    offsetY = yDistance * 2
                 else
                     size = SMALL_AURA_SIZE
                 end
@@ -886,6 +897,10 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                     rowWidth = size;
                     frame.auraRows = frame.auraRows + 1;
                     anchorRowAura = dbf
+
+                    if frame.largestAura then
+                        offsetY = frame.largestAura
+                    end
                 else
                     rowWidth = rowWidth + size + offsetX;
                 end
@@ -906,7 +921,8 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                     frame.auraRows = frame.auraRows + 1;
                     offsetY = yDistance
                     anchorRowAura = dbf
-                    biggestAura = size
+                    biggestAura = nil
+                    frame.largestAura = nil
                 else
                     updateFunc(frame, dbf, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically)
                 end
@@ -916,6 +932,11 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
 
                 if not biggestAura or (biggestAura and (biggestAura < size)) then
                     biggestAura = size
+                end
+
+                local calc = (yDistance * 2) + (biggestAura - anchorRowAura:GetSize())
+                if not frame.largestAura or (frame.largestAura and (frame.largestAura < calc)) then
+                    frame.largestAura = calc
                 end
             else
                 if dbf then
@@ -1070,14 +1091,17 @@ local function Filterino(self)
     local offsetX = db.horizontalSpace
 
     self.auraRows = 0
+    self.largestAura = 0
     self.spellbarAnchor = nil
 
-    if db.sortBySize or db.sortbyDispellable or db.enablePrioritySort then
-        auraSortBySize(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
-        auraSortBySize(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+    local sortOrDefault = (db.sortBySize or db.sortbyDispellable or db.enablePrioritySort) and auraSortBySize or updatePositions
+
+    if isEnemy then
+        sortOrDefault(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+        sortOrDefault(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
     else
-        updatePositions(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
-        updatePositions(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+        sortOrDefault(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+        sortOrDefault(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
     end
 
     if self.spellbar then
@@ -1090,7 +1114,17 @@ DeBuffFilter.event:RegisterEvent("PLAYER_LOGIN")
 DeBuffFilter.event:SetScript("OnEvent", function(self)
     DeBuffFilter:SetupOptions()
     hooksecurefunc("TargetFrame_UpdateAuras", Filterino)
-    hooksecurefunc("Target_Spellbar_AdjustPosition", adjustCastbar)
+
+    for _, v in pairs({TargetFrameSpellBar, FocusFrameSpellBar}) do
+        if v then
+            hooksecurefunc(v, "SetPoint", function(self)
+                if self.busy then return end
+                self.busy = true
+                adjustCastbar(self)
+                self.busy = false
+            end)
+        end
+    end
 
     playerClass = select(2, UnitClass("player"))
 end)
