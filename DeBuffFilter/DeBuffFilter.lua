@@ -811,11 +811,11 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
             local horizontalDistance = rowWidth
 
             if currentX then
-                horizontalDistance = (mfloor(mabs((currentX + size + offsetX) - totFrameX))) + 2 -- Cheat a bit
+                horizontalDistance = (mfloor(mabs((currentX + size + offsetX) - totFrameX))) + 5 -- Cheat a bit
             end
 
-            if (haveTargetofTarget and (horizontalDistance <= size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
-                if biggestAura > mfloor(anchorRowAura:GetSize() + 0.5) then
+            if (haveTargetofTarget and (horizontalDistance < size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
+                if biggestAura >= mfloor(anchorRowAura:GetSize() + 0.5) then
                     offsetY = (yDistance * 2) + (biggestAura - anchorRowAura:GetSize())
                 end
                 updateFunc(frame, aura, numOppositeAuras, anchorRowAura, size, offsetX, offsetY, mirrorAurasVertically, true);
@@ -909,11 +909,11 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                 local horizontalDistance = rowWidth
 
                 if currentX then
-                    horizontalDistance = (mfloor(mabs((currentX + size + offsetX) - totFrameX))) + 2 -- Cheat a bit
+                    horizontalDistance = (mfloor(mabs((currentX + size + offsetX) - totFrameX))) + 5 -- Cheat a bit
                 end
 
-                if (haveTargetofTarget and (horizontalDistance <= size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
-                    if biggestAura > mfloor(anchorRowAura:GetSize() + 0.5) then
+                if (haveTargetofTarget and (horizontalDistance < size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
+                    if biggestAura >= mfloor(anchorRowAura:GetSize() + 0.5) then
                         offsetY = (yDistance * 2) + (biggestAura - anchorRowAura:GetSize())
                     end
                     updateFunc(frame, dbf, numOppositeAuras, anchorRowAura, size, offsetX, offsetY, mirrorAurasVertically, true)
