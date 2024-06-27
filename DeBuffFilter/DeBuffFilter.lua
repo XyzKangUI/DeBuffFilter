@@ -13,6 +13,7 @@ local IsAddOnLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
 local GetAddOnInfo = C_AddOns and C_AddOns.GetAddOnInfo or GetAddOnInfo
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local playerClass = select(2, UnitClass("player"))
+local lastTime, fontName = 0
 
 local defaults = {
     profile = {
@@ -31,7 +32,13 @@ local defaults = {
         enablePrioritySort = false,
         customHighlightPriorities = {},
         customShowOwnOnly = {},
-        removeDuplicates = {}
+        removeDuplicates = {},
+        focusBarPosX = 0,
+        focusBarPosY = 0,
+        targetBarPosX = 0,
+        targetBarPosY = 0,
+        targetCastBarSize = 1,
+        focusCastBarSize = 1,
     }
 }
 
@@ -182,6 +189,32 @@ function DeBuffFilter:AddCustomHighlightOptions()
     return new_args
 end
 
+local function updateCastbarPosition(bar, val, xPos)
+    if not bar:IsShown() then
+        bar:SetAlpha(1)
+        bar:Show()
+    end
+
+    local a, b, c, d, e = bar:GetPoint()
+    bar:ClearAllPoints()
+
+    if xPos then
+        bar:SetPoint(a, b, c, val, e)
+    else
+        bar:SetPoint(a, b, c, d, val)
+    end
+
+    lastTime = GetTime()
+
+    C_Timer.After(3, function()
+        if (GetTime() - lastTime) > 2 then
+            bar:SetAlpha(0)
+            bar:Hide()
+        end
+    end)
+
+end
+
 function DeBuffFilter:SetupOptions()
     self.db = LibStub("AceDB-3.0"):New("DeBuffFilterDB", defaults, true)
 
@@ -211,7 +244,9 @@ function DeBuffFilter:SetupOptions()
                         type = "input",
                         set = function(info, val)
                             if tonumber(val) then
-                                if not GetSpellInfo(val) then return end
+                                if not GetSpellInfo(val) then
+                                    return
+                                end
                                 val = tostring(val)
                             end
 
@@ -433,6 +468,124 @@ function DeBuffFilter:SetupOptions()
                             },
                         },
                     },
+                    fancyCastBar = {
+                        order = 3,
+                        type = "group",
+                        inline = false,
+                        name = "Castbar settings",
+                        args = {
+                            targetSpellbarPosX = {
+                                order = 1,
+                                width = 1.5,
+                                name = "Target spellbar horizontal position",
+                                desc = "Set horizontal & vertical to 0 for default behaviour",
+                                type = "range",
+                                min = -300,
+                                max = 300,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.targetBarPosX
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.targetBarPosX = val
+                                    updateCastbarPosition(TargetFrameSpellBar, val, true)
+                                end
+                            },
+                            targetSpellbarPosY = {
+                                order = 2,
+                                width = 1.5,
+                                name = "Target spellbar vertical position",
+                                desc = "Set horizontal & vertical to 0 for default behaviour",
+                                type = "range",
+                                min = -300,
+                                max = 300,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.targetBarPosY
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.targetBarPosY = val
+                                    updateCastbarPosition(TargetFrameSpellBar, val, false)
+                                end
+                            },
+                            focusSpellbarPosX = {
+                                order = 3,
+                                width = 1.5,
+                                name = "Focus spellbar horizontal position",
+                                desc = "Set horizontal & vertical to 0 for default behaviour",
+                                type = "range",
+                                min = -300,
+                                max = 300,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.focusBarPosX
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.focusBarPosX = val
+                                    updateCastbarPosition(FocusFrameSpellBar, val, true)
+                                end
+                            },
+                            focusSpellbarPosY = {
+                                order = 4,
+                                width = 1.5,
+                                name = "Focus spellbar vertical position",
+                                desc = "Set horizontal & vertical to 0 for default behaviour",
+                                type = "range",
+                                min = -300,
+                                max = 300,
+                                step = 1,
+                                get = function(info, val)
+                                    return self.db.profile.focusBarPosY
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.focusBarPosY = val
+                                    updateCastbarPosition(FocusFrameSpellBar, val, false)
+                                end
+                            },
+                            targetSpellbarScale = {
+                                order = 5,
+                                width = 1.5,
+                                name = "Target spellbar size",
+                                desc = "Change the scale of the castbar",
+                                type = "range",
+                                min = 0.7,
+                                max = 3,
+                                step = 0.05,
+                                get = function(info, val)
+                                    return self.db.profile.targetCastBarSize
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.targetCastBarSize = val
+                                    TargetFrameSpellBar:SetScale(self.db.profile.targetCastBarSize)
+                                    if not TargetFrameSpellBar:IsShown() then
+                                        TargetFrameSpellBar:SetAlpha(1)
+                                        TargetFrameSpellBar:Show()
+                                    end
+                                end
+                            },
+                            focusSpellbarScale = {
+                                order = 6,
+                                width = 1.5,
+                                name = "Focus spellbar size",
+                                desc = "Change the scale of the castbar",
+                                type = "range",
+                                min = 0.7,
+                                max = 3,
+                                step = 0.05,
+                                get = function(info, val)
+                                    return self.db.profile.focusCastBarSize
+                                end,
+                                set = function(info, val)
+                                    self.db.profile.focusCastBarSize = val
+                                    FocusFrameSpellBar:SetScale(self.db.profile.focusCastBarSize)
+                                    if not FocusFrameSpellBar:IsShown() then
+                                        FocusFrameSpellBar:SetAlpha(1)
+                                        FocusFrameSpellBar:Show()
+                                    end
+                                end
+                            },
+                        },
+                    },
                 },
             },
             highlightBuffs = {
@@ -445,11 +598,13 @@ function DeBuffFilter:SetupOptions()
                         order = 1,
                         width = 1.5,
                         name = "Add (De)Buff By Name / Spell Id",
-                        desc = "Type the name or spell id of a (de)buff to custom highlight",
+                        desc = "Type the name or spell id of a (de)buff to customize",
                         type = "input",
                         set = function(info, val)
                             if tonumber(val) then
-                                if not GetSpellInfo(val) then return end
+                                if not GetSpellInfo(val) then
+                                    return
+                                end
                                 val = tostring(val)
                             end
 
@@ -469,7 +624,7 @@ function DeBuffFilter:SetupOptions()
                     buffList = {
                         order = 2,
                         width = 1,
-                        name = "Buff List",
+                        name = "Aura List",
                         type = "group",
                         args = DeBuffFilter:AddCustomHighlightOptions()
                     },
@@ -516,34 +671,42 @@ end
 
 local function adjustCastbar(frame)
     local parentFrame = frame:GetParent()
-    local yOffset = parentFrame.largestAura or 0
+    local yOffset, xOffset = parentFrame.largestAura or 0
+    local spellbarAnchor = parentFrame.spellbarAnchor
 
-    if (frame.boss) then
+    local barPosX = parentFrame == TargetFrame and DeBuffFilter.db.profile.targetBarPosX or parentFrame == FocusFrame and DeBuffFilter.db.profile.focusBarPosX
+    local barPosY = parentFrame == TargetFrame and DeBuffFilter.db.profile.targetBarPosY or parentFrame == FocusFrame and DeBuffFilter.db.profile.focusBarPosY
+
+    if (barPosX and barPosX ~= 0) or (barPosY and barPosY ~= 0) then
+        spellbarAnchor = parentFrame
+    end
+
+    if frame.boss then
         frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 10 - yOffset);
-    elseif (parentFrame.haveToT) then
-        if parentFrame.buffsOnTop or (parentFrame.auraRows <= 1) then
+        frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or 10 - yOffset)
+    elseif parentFrame.haveToT then
+        if parentFrame.buffsOnTop or parentFrame.auraRows <= 1 then
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -25);
+            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or -25)
         else
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15 - yOffset);
+            frame:SetPoint("TOPLEFT", spellbarAnchor, "BOTTOMLEFT", barPosX ~= 0 and barPosX or 20, barPosY ~= 0 and barPosY or -15 - yOffset)
         end
-    elseif (parentFrame.haveElite) then
-        if (parentFrame.buffsOnTop or parentFrame.auraRows <= 1) then
+    elseif parentFrame.haveElite then
+        if parentFrame.buffsOnTop or parentFrame.auraRows <= 1 then
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, -5);
+            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or -5)
         else
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15 - yOffset);
+            frame:SetPoint("TOPLEFT", spellbarAnchor, "BOTTOMLEFT", barPosX ~= 0 and barPosX or 20, barPosY ~= 0 and barPosY or -15 - yOffset)
         end
     else
-        if ((not parentFrame.buffsOnTop) and parentFrame.auraRows > 0) then
+        if not parentFrame.buffsOnTop and parentFrame.auraRows > 0 then
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame.spellbarAnchor, "BOTTOMLEFT", 20, -15 - yOffset);
+            frame:SetPoint("TOPLEFT", spellbarAnchor, "BOTTOMLEFT", barPosX ~= 0 and barPosX or 20, barPosY ~= 0 and barPosY or -15 - yOffset)
         else
             frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", 25, 7 - yOffset);
+            frame:SetPoint("TOPLEFT", parentFrame, "BOTTOMLEFT", barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or 7 - yOffset)
         end
     end
 end
@@ -1005,6 +1168,15 @@ local function Filterino(self)
                     frameStealable:Hide()
                 end
             end
+
+            local frameCount = _G[frameName .. "Count"]
+            if frameCount then
+                if not fontName then
+                    fontName = frameCount:GetFont()
+                end
+                _G[frameName .. "Count"]:SetFont(fontName, buffSize / 1.75, "OUTLINE, THICKOUTLINE, MONOCHROME")
+            end
+
             numBuffs = numBuffs + 1;
             if not (DeBuffFilter:Blacklisted(buffName) or DeBuffFilter:Blacklisted(spellId)) then
                 numBuff = numBuff + 1
@@ -1023,6 +1195,7 @@ local function Filterino(self)
                 frameName = selfName .. "Debuff" .. frameNum
                 frame = _G[frameName]
                 local debuffBorder = _G[frameName .. "Border"]
+                local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
 
                 if DeBuffFilter.db.profile.customHighlights then
                     local customColor = DeBuffFilter.db.profile.customHighlightColors[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightColors[debuffName]
@@ -1050,8 +1223,6 @@ local function Filterino(self)
 
                     if frameStealable then
                         if customColor then
-                            local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
-
                             local newSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightSizes[debuffName]
                             if newSize then
                                 buffSize = newSize
@@ -1072,6 +1243,14 @@ local function Filterino(self)
                             debuffBorder:Show()
                         end
                     end
+                end
+
+                local frameCount = _G[frameName .. "Count"]
+                if frameCount then
+                    if not fontName then
+                        fontName = frameCount:GetFont()
+                    end
+                    _G[frameName .. "Count"]:SetFont(fontName, buffSize / 1.75, "OUTLINE, THICKOUTLINE, MONOCHROME")
                 end
 
                 numDebuffs = numDebuffs + 1;
@@ -1115,16 +1294,21 @@ DeBuffFilter.event:SetScript("OnEvent", function(self)
     DeBuffFilter:SetupOptions()
     hooksecurefunc("TargetFrame_UpdateAuras", Filterino)
 
-    for _, v in pairs({TargetFrameSpellBar, FocusFrameSpellBar}) do
+    for _, v in pairs({ TargetFrameSpellBar, FocusFrameSpellBar }) do
         if v then
             hooksecurefunc(v, "SetPoint", function(self)
-                if self.busy then return end
+                if self.busy then
+                    return
+                end
                 self.busy = true
                 adjustCastbar(self)
                 self.busy = false
             end)
         end
     end
+
+    TargetFrameSpellBar:SetScale(DeBuffFilter.db.profile.targetCastBarSize)
+    FocusFrameSpellBar:SetScale(DeBuffFilter.db.profile.focusCastBarSize)
 
     playerClass = select(2, UnitClass("player"))
 end)
