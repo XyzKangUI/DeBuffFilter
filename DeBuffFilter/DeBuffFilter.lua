@@ -25,7 +25,7 @@ local defaults = {
         horizontalSpace = 3,
         customHighlights = {},
         customHighlightColors = {},
-        customHighlightSizes = {},
+        customSizes = {},
         sortBySize = false,
         sortbyDispellable = false,
         highlightAll = false,
@@ -48,6 +48,13 @@ function DeBuffFilter:AddCustomHighlightOptions()
     for _, buff in ipairs(self.db.profile.customHighlights) do
         local buffName = tonumber(buff) and GetSpellInfo(buff) .. " (" .. buff .. ")" or buff
 
+        local customSize = self.db.profile.customSizes[buff] or {}
+        self.db.profile.customSizes[buff] = customSize
+
+        customSize.enabled = customSize.enabled or false
+        customSize.ownSize = customSize.ownSize or self.db.profile.selfSize
+        customSize.otherSize = customSize.otherSize or self.db.profile.otherSize
+
         new_args["highlight_" .. buff] = {
             type = "group",
             name = buffName,
@@ -55,6 +62,7 @@ function DeBuffFilter:AddCustomHighlightOptions()
                 delete = {
                     order = 1,
                     type = "execute",
+                    width = "0.5",
                     name = "Delete",
                     func = function()
                         local cur_index = 0
@@ -67,7 +75,7 @@ function DeBuffFilter:AddCustomHighlightOptions()
                         if cur_index > 0 then
                             table.remove(self.db.profile.customHighlights, cur_index)
                             self.db.profile.customHighlightColors[buff] = nil
-                            self.db.profile.customHighlightSizes[buff] = nil
+                            self.db.profile.customSizes[buff] = nil
                             self.options.args.highlightBuffs.args.buffList.args = self:AddCustomHighlightOptions()
                         end
                     end
@@ -92,33 +100,82 @@ function DeBuffFilter:AddCustomHighlightOptions()
                         end
                     end,
                 },
-                size = {
+                customSizeToggle = {
                     order = 3,
+                    type = "toggle",
+                    width = "full",
+                    name = "Enable custom sizing",
+                    get = function(info)
+                        return self.db.profile.customSizes[buff].enabled
+                    end,
+                    set = function(info, val)
+                        self.db.profile.customSizes[buff].enabled = val
+                        if val == false then
+                            self.db.profile.customSizes[buff] = {
+                                ownSize = self.db.profile.selfSize,
+                                otherSize = self.db.profile.otherSize
+                            }
+                        end
+                    end,
+                },
+                ownAuraSize = {
+                    order = 4,
                     type = "range",
-                    width = 2,
-                    name = "Size",
-                    desc = "Resize the (de)buff displayed",
+                    width = 1.2,
+                    name = "Personal aura size",
+                    desc = "Change this aura's size when cast by you",
                     min = 17,
                     max = 34,
                     step = 1,
                     get = function(info)
-                        local size = self.db.profile.customHighlightSizes[buff]
+                        local size = self.db.profile.customSizes[buff].ownSize
                         if not size then
-                            size = 20
-                            self.db.profile.customHighlightSizes[buff] = size
+                            size = self.db.profile.selfSize
+                            self.db.profile.customSizes[buff].ownSize = size
                         end
                         return size
                     end,
                     set = function(info, val)
-                        self.db.profile.customHighlightSizes[buff] = val
+                        self.db.profile.customSizes[buff].ownSize = val
                         TargetFrame_UpdateAuras(TargetFrame)
                         if FocusFrame then
                             TargetFrame_UpdateAuras(FocusFrame)
                         end
                     end,
+                    hidden = function()
+                        return not self.db.profile.customSizes[buff].enabled
+                    end,
+                },
+                otherAuraSize = {
+                    order = 4.5,
+                    type = "range",
+                    width = 1.2,
+                    name = "Other's aura size",
+                    desc = "Change this aura's size when cast by others",
+                    min = 17,
+                    max = 34,
+                    step = 1,
+                    get = function(info)
+                        local size = self.db.profile.customSizes[buff].otherSize
+                        if not size then
+                            size = self.db.profile.otherSize
+                            self.db.profile.customSizes[buff].otherSize = size
+                        end
+                        return size
+                    end,
+                    set = function(info, val)
+                        self.db.profile.customSizes[buff].otherSize = val
+                        TargetFrame_UpdateAuras(TargetFrame)
+                        if FocusFrame then
+                            TargetFrame_UpdateAuras(FocusFrame)
+                        end
+                    end,
+                    hidden = function()
+                        return not self.db.profile.customSizes[buff].enabled
+                    end,
                 },
                 priority = {
-                    order = 4,
+                    order = 5,
                     type = "range",
                     width = 2,
                     name = "Priority",
@@ -146,13 +203,13 @@ function DeBuffFilter:AddCustomHighlightOptions()
                     end,
                 },
                 separator = {
-                    order = 5,
+                    order = 6,
                     type = "description",
                     name = "\n",
                     width = "full"
                 },
                 ownOnly = {
-                    order = 6,
+                    order = 7,
                     type = "toggle",
                     name = "Show own buff only",
                     desc = "Hides the aura when it is not applied by you",
@@ -164,7 +221,7 @@ function DeBuffFilter:AddCustomHighlightOptions()
                     end,
                 },
                 removeDuplicates = {
-                    order = 7,
+                    order = 8,
                     type = "toggle",
                     name = "Hide duplicate auras",
                     desc = "Hides duplicate effects of this aura",
@@ -903,9 +960,9 @@ local function auraSortBySize(frame, auraName, numAuras, numOppositeAuras, updat
 
         local aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
         if aura and aura.name then
-            local customSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(aura.spellId)] or DeBuffFilter.db.profile.customHighlightSizes[aura.name]
+            local customSize = DeBuffFilter.db.profile.customSizes[tostring(aura.spellId)] or DeBuffFilter.db.profile.customSizes[aura.name]
             if customSize then
-                size = customSize
+                size = ShouldAuraBeLarge(aura.sourceUnit) and customSize.ownSize or customSize.otherSize
             else
                 if aura.sourceUnit and ShouldAuraBeLarge(aura.sourceUnit) then
                     size = LARGE_AURA_SIZE
@@ -1044,16 +1101,17 @@ local function updatePositions(frame, auraName, numAuras, numOppositeAuras, upda
                     processedSpellIDs[aura.spellId] = true
                 end
 
-                if aura.sourceUnit and ShouldAuraBeLarge(aura.sourceUnit) then
+                local shouldbeLarge = ShouldAuraBeLarge(aura.sourceUnit)
+                if aura.sourceUnit and shouldbeLarge then
                     size = LARGE_AURA_SIZE
                     offsetY = yDistance * 2
                 else
                     size = SMALL_AURA_SIZE
                 end
 
-                local customSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(aura.spellId)] or DeBuffFilter.db.profile.customHighlightSizes[aura.name]
+                local customSize = DeBuffFilter.db.profile.customSizes[tostring(aura.spellId)] or DeBuffFilter.db.profile.customSizes[aura.name]
                 if customSize then
-                    size = customSize
+                    size = shouldbeLarge and customSize.ownSize or customSize.otherSize
                 end
 
                 if lastBuff == nil then
@@ -1128,7 +1186,8 @@ local function Filterino(self)
         if buffName then
             frameName = selfName .. "Buff" .. i
             local frameStealable = _G[frameName .. "Stealable"]
-            local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
+            local shouldBeLarge = caster and ShouldAuraBeLarge(caster)
+            local buffSize = shouldBeLarge and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
             local modifier = 1.34
             local stockR, stockG, stockB = 1, 1, 1
 
@@ -1137,9 +1196,9 @@ local function Filterino(self)
                 stockR, stockG, stockB = 1, 1, 0.75
             end
 
-            local newSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightSizes[buffName]
+            local newSize = DeBuffFilter.db.profile.customSizes[tostring(spellId)] or DeBuffFilter.db.profile.customSizes[buffName]
             if newSize then
-                buffSize = newSize
+                buffSize = shouldBeLarge and newSize.ownSize or newSize.otherSize
             end
 
             if DeBuffFilter.db.profile.customHighlights then
@@ -1195,7 +1254,8 @@ local function Filterino(self)
                 frameName = selfName .. "Debuff" .. frameNum
                 frame = _G[frameName]
                 local debuffBorder = _G[frameName .. "Border"]
-                local buffSize = caster == "player" and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
+                local shouldBeLarge = caster and ShouldAuraBeLarge(caster)
+                local buffSize = shouldBeLarge and DeBuffFilter.db.profile.selfSize or DeBuffFilter.db.profile.otherSize
 
                 if DeBuffFilter.db.profile.customHighlights then
                     local customColor = DeBuffFilter.db.profile.customHighlightColors[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightColors[debuffName]
@@ -1223,9 +1283,9 @@ local function Filterino(self)
 
                     if frameStealable then
                         if customColor then
-                            local newSize = DeBuffFilter.db.profile.customHighlightSizes[tostring(spellId)] or DeBuffFilter.db.profile.customHighlightSizes[debuffName]
+                            local newSize = DeBuffFilter.db.profile.customSizes[tostring(spellId)] or DeBuffFilter.db.profile.customSizes[debuffName]
                             if newSize then
-                                buffSize = newSize
+                                buffSize = shouldBeLarge and newSize.ownSize or newSize.otherSize
                             end
 
                             local r, g, b, a = customColor.r, customColor.g, customColor.b, customColor.a
