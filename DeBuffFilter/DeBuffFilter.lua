@@ -7,8 +7,8 @@ local AURA_START_Y = 32
 local AURA_START_X = 5
 local mabs, pairs, mfloor = math.abs, pairs, math.floor
 local tinsert, tsort, tostring = table.insert, table.sort, tostring
-local UnitBuff, UnitDebuff, UnitIsEnemy = _G.UnitBuff, _G.UnitDebuff, _G.UnitIsEnemy
-local UnitIsUnit, UnitIsOwnerOrControllerOfUnit, UnitIsFriend = _G.UnitIsUnit, _G.UnitIsOwnerOrControllerOfUnit, _G.UnitIsFriend
+local UnitBuff, UnitDebuff, UnitCanAttack = _G.UnitBuff, _G.UnitDebuff, _G.UnitCanAttack
+local UnitIsUnit, UnitIsOwnerOrControllerOfUnit, UnitCanAssist = _G.UnitIsUnit, _G.UnitIsOwnerOrControllerOfUnit, _G.UnitCanAssist
 local IsAddOnLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
 local GetAddOnInfo = C_AddOns and C_AddOns.GetAddOnInfo or GetAddOnInfo
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
@@ -786,6 +786,21 @@ local function ShouldAuraBeLarge(caster)
     end
 end
 
+local function isCircular(debuffs, buffs)
+    local frame = debuffs
+    while frame do
+        local _, x = frame:GetPoint()
+        if not x then
+            return false
+        end
+        if x == buffs then
+            return true
+        end
+        frame = x
+    end
+    return false
+end
+
 local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, offsetX, offsetY, mirrorVertically, newRow)
     --For mirroring vertically
     local point, relativePoint;
@@ -809,30 +824,26 @@ local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, of
     buffName:ClearAllPoints()
 
     if anchorBuff == nil then
-        if (UnitIsFriend("player", self.unit) or numDebuffs == 0) then
+        if (UnitCanAssist("player", self.unit) or numDebuffs == 0) then
             -- unit is friendly or there are no debuffs...buffs start on top
             buffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
         else
-            local _, a = self.debuffs:GetPoint()
-            if a then
-                local _, b = a:GetPoint()
-                if b == self.buffs then
-                    self.debuffs:ClearAllPoints()
-                    self.debuffs:SetPoint(point .. "LEFT", self, point .. "LEFT", 0, 0)
-                    self.debuffs:SetPoint(relativePoint .. "LEFT", self, relativePoint .. "LEFT", 0, -auraOffsetY)
-                end
+            if isCircular(self.debuffz, self.buffz) then
+                self.debuffz:ClearAllPoints()
+                self.debuffz:SetPoint(point .. "LEFT", self, point .. "LEFT", 0, 0)
+                self.debuffz:SetPoint(relativePoint .. "LEFT", self, relativePoint .. "LEFT", 0, -auraOffsetY)
             end
             -- unit is not friendly and we have debuffs...buffs start on bottom
-            buffName:SetPoint(point .. "LEFT", self.debuffs, relativePoint .. "LEFT", 0, -offsetY);
+            buffName:SetPoint(point .. "LEFT", self.debuffz, relativePoint .. "LEFT", 0, -offsetY);
         end
-        self.buffs:ClearAllPoints()
-        self.buffs:SetPoint(point .. "LEFT", buffName, point .. "LEFT", 0, 0);
-        self.buffs:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.buffz:ClearAllPoints()
+        self.buffz:SetPoint(point .. "LEFT", buffName, point .. "LEFT", 0, 0);
+        self.buffz:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY);
         self.spellbarAnchor = buffName;
     elseif newRow then
         buffName:SetPoint(point .. "LEFT", anchorBuff, relativePoint .. "LEFT", 0, -offsetY);
-        self.buffs:ClearAllPoints()
-        self.buffs:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.buffz:ClearAllPoints()
+        self.buffz:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY);
         self.spellbarAnchor = buffName;
     else
         buffName:SetPoint(point .. "LEFT", anchorBuff, point .. "RIGHT", offsetX, 0);
@@ -844,7 +855,7 @@ local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, of
 end
 
 local function UpdateDebuffAnchor(self, debuffName, numBuffs, anchorDebuff, size, offsetX, offsetY, mirrorVertically, newRow)
-    local isFriend = UnitIsFriend("player", self.unit);
+    local isFriend = UnitCanAssist("player", self.unit);
 
     --For mirroring vertically
     local point, relativePoint;
@@ -870,21 +881,21 @@ local function UpdateDebuffAnchor(self, debuffName, numBuffs, anchorDebuff, size
     if anchorDebuff == nil then
         if (isFriend and numBuffs > 0) then
             -- unit is friendly and there are buffs...debuffs start on bottom
-            debuffName:SetPoint(point .. "LEFT", self.buffs, relativePoint .. "LEFT", 0, -offsetY);
+            debuffName:SetPoint(point .. "LEFT", self.buffz, relativePoint .. "LEFT", 0, -offsetY);
         else
             -- unit is not friendly or there are no buffs...debuffs start on top
             debuffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
         end
-        self.debuffs:ClearAllPoints()
-        self.debuffs:SetPoint(point .. "LEFT", debuffName, point .. "LEFT", 0, 0);
-        self.debuffs:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.debuffz:ClearAllPoints()
+        self.debuffz:SetPoint(point .. "LEFT", debuffName, point .. "LEFT", 0, 0);
+        self.debuffz:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY);
         if ((isFriend) or (not isFriend and numBuffs == 0)) then
             self.spellbarAnchor = debuffName;
         end
     elseif newRow then
         debuffName:SetPoint(point .. "LEFT", anchorDebuff, relativePoint .. "LEFT", 0, -offsetY);
-        self.debuffs:ClearAllPoints()
-        self.debuffs:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY);
+        self.debuffz:ClearAllPoints()
+        self.debuffz:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY);
         if ((isFriend) or (not isFriend and numBuffs == 0)) then
             self.spellbarAnchor = debuffName;
         end
@@ -1179,7 +1190,7 @@ local function Filterino(self)
     local numDebuffs, numBuffs = 0, 0
     local numDebuff, numBuff = 0, 0
     local playerIsTarget = UnitIsUnit("player", self.unit);
-    local isEnemy = UnitIsEnemy("player", self.unit)
+    local isEnemy = UnitCanAttack("player", self.unit)
 
     for i = 1, MAX_TARGET_BUFFS do
         local buffName, icon, _, debuffType, _, _, caster, canStealOrPurge, _, spellId = UnitBuff(self.unit, i, "HELPFUL");
@@ -1334,6 +1345,16 @@ local function Filterino(self)
     self.spellbarAnchor = nil
 
     local sortOrDefault = (db.sortBySize or db.sortbyDispellable or db.enablePrioritySort) and auraSortBySize or updatePositions
+
+    if not self.buffz then
+        self.buffz = CreateFrame("Frame", "$parentBuffz", self)
+        self.buffz:SetSize(10, 10)
+    end
+
+    if not self.debuffz then
+        self.debuffz = CreateFrame("Frame", "$parentDebuffz", self)
+        self.debuffz:SetSize(10, 10)
+    end
 
     if isEnemy then
         sortOrDefault(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
