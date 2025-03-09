@@ -831,7 +831,9 @@ local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, of
     buffName:ClearAllPoints()
 
     if anchorBuff == nil then
-        if (UnitIsFriend("player", self.unit) or numDebuffs == 0) then
+        -- Party member can be friendly and hostile at the same time.. UnitCanAssist would probably be better,
+        -- but UnitCanAssist has it own quirks, e.g. in spectator mode
+        if ((UnitIsFriend("player", self.unit) and not UnitIsEnemy("player", self.unit)) or numDebuffs == 0) then
             -- unit is friendly or there are no debuffs...buffs start on top
             buffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY);
         else
@@ -857,11 +859,11 @@ local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, of
 end
 
 local function UpdateDebuffAnchor(self, debuffName, numBuffs, anchorDebuff, size, offsetX, offsetY, mirrorVertically, newRow)
-    local isFriend = UnitIsFriend("player", self.unit);
-
     --For mirroring vertically
     local point, relativePoint;
     local startY, auraOffsetY;
+    local isFriend = UnitIsFriend("player", self.unit);
+
     if (mirrorVertically) then
         point = "BOTTOM";
         relativePoint = "TOP";
@@ -881,7 +883,7 @@ local function UpdateDebuffAnchor(self, debuffName, numBuffs, anchorDebuff, size
     debuffName:ClearAllPoints()
 
     if anchorDebuff == nil then
-        if (isFriend and numBuffs > 0) then
+        if ((isFriend and not UnitIsEnemy("player", self.unit)) and numBuffs > 0) then
             -- unit is friendly and there are buffs...debuffs start on bottom
             debuffName:SetPoint(point .. "LEFT", self.buffz, relativePoint .. "LEFT", 0, -offsetY);
         else
