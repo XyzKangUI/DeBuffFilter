@@ -1,9 +1,10 @@
 ## Interface: 40400, 40401, 40402, 40403, 40404, 40405
 ## Title: DeBuffFilter
-## Version: v4.9
+## Version: v5.0
 ## Notes: discord.gg/CtxPasSQnQ
 ## Author: Xyz, Asuri (bugs, jk)
 ## SavedVariables: DeBuffFilterDB
 
 Embeds.xml
+Options.lua
 DeBuffFilter.lua
