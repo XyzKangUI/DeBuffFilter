@@ -1,4 +1,4 @@
-## Interface: 40400, 40401, 40402, 40403, 40404, 40405
+## Interface: 11507, 40402, 50500
 ## Title: DeBuffFilter
 ## Version: v5.0
 ## Notes: discord.gg/CtxPasSQnQ
@@ -8,3 +8,4 @@
 Embeds.xml
 Options.lua
 DeBuffFilter.lua
+BuffFrame.lua
