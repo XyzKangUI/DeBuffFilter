@@ -32,11 +32,12 @@ local function New_BuffFrame_UpdateAllBuffAnchors()
             return
         end
 
-        local settings = DeBuffFilter:GetAuraFrameSettingsByAura(auraData.name, auraData.spellId, "BuffFrame")
         local filters = DeBuffFilter:GetSmartFilterSettings(auraData.name, auraData.spellId, "BuffFrame")
         local action = DeBuffFilter:CheckSmarterAuraFilters(auraData.spellId, auraData.name, auraData.expirationTime, auraData.applications, "BuffFrame", filters)
-        local shouldHide = (settings and settings.hide)
-        local sizeOverride, shouldGlow
+        local frameSettings = filters._frameSettings
+        local shouldBeLarge = auraData.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(auraData.sourceUnit)
+        local shouldHide, buffSize, shouldGlow, colorTable = false, 30, false, { r = 1, g = 1, b = 0.85, a = 1 }
+        local removeDuplicates, ownOnly = false, false
 
         if action then
             for _, action in ipairs(action) do
@@ -47,30 +48,30 @@ local function New_BuffFrame_UpdateAllBuffAnchors()
                     shouldGlow = true
                 end
                 if action.size and action.size.enabled then
-                    sizeOverride = action.size.value
+                    if shouldBeLarge then
+                        buffSize = action.selfSize or action.otherSize or 21
+                    else
+                        buffSize = action.otherSize or action.selfSize or 19
+                    end
                 end
             end
         end
 
-        if shouldHide or settings and ((settings.ownOnly and (auraData and auraData.sourceUnit ~= "player")) or settings.removeDuplicates) then
+        if frameSettings then
+            if frameSettings.removeDuplicates then removeDuplicates = true end
+            if frameSettings.ownOnly then ownOnly = true end
+            if frameSettings.alwaysEnableGlow then shouldGlow = true end
+            if frameSettings.color then colorTable = frameSettings.color end
+        end
+
+        if shouldHide or (ownOnly and auraData.sourceUnit ~= "player") or removeDuplicates then
             buff:ClearAllPoints()
             buff:SetPoint("TOPRIGHT", ConsolidatedBuffs, "TOPLEFT", 0, 10000);
         else
-            if settings and settings.removeDuplicates then
+            if removeDuplicates then
                 processedSpellIDs[auraData.spellId] = true
             end
 
-            local buffSize = 30
-
-            if sizeOverride then
-                buffSize = sizeOverride
-            elseif settings and settings.customSizeEnabled then
-                if (auraData.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(auraData.sourceUnit)) then
-                    buffSize = settings.ownSize
-                else
-                    buffSize = settings.otherSize
-                end
-            end
             buff:SetSize(buffSize, buffSize)
 
             if filters then
@@ -127,13 +128,9 @@ local function New_BuffFrame_UpdateAllBuffAnchors()
         end
 
         local highlightBorder = buff.highlightBorder
-        local hasCustomColor = settings and settings.color and (settings.color.r ~= 1 or settings.color.g ~= 1 or settings.color.b ~= 1 or settings.color.a ~= 1)
 
-        if (settings and settings.alwaysEnableGlow) or shouldGlow then
-            local r, g, b, a = 1, 1, 1, 1
-            if hasCustomColor then
-                r, g, b, a = settings.color.r, settings.color.g, settings.color.b, settings.color.a
-            end
+        if shouldGlow then
+            local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
             local retailGlow = DeBuffFilter.db.profile.enableRetailGlow
             if not highlightBorder then
                 highlightBorder = buff:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -189,11 +186,12 @@ local function New_DebuffButton_UpdateAnchors(buttonName, index)
             return
         end
 
-        local settings = DeBuffFilter:GetAuraFrameSettingsByAura(auraData.name, auraData.spellId, "BuffFrame")
         local filters = DeBuffFilter:GetSmartFilterSettings(auraData.name, auraData.spellId, "BuffFrame")
         local action = DeBuffFilter:CheckSmarterAuraFilters(auraData.spellId, auraData.name, auraData.expirationTime, auraData.applications, "BuffFrame", filters)
-        local shouldHide = (settings and settings.hide)
-        local sizeOverride, shouldGlow
+        local frameSettings = filters._frameSettings
+        local shouldBeLarge = auraData.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(auraData.sourceUnit)
+        local shouldHide, buffSize, shouldGlow, colorTable = false, 30, false, { r = 1, g = 1, b = 0.85, a = 1 }
+        local removeDuplicates, ownOnly = false, false
 
         if action then
             for _, action in ipairs(action) do
@@ -204,29 +202,30 @@ local function New_DebuffButton_UpdateAnchors(buttonName, index)
                     shouldGlow = true
                 end
                 if action.size and action.size.enabled then
-                    sizeOverride = action.size.value
+                    if shouldBeLarge then
+                        buffSize = action.selfSize or action.otherSize or 21
+                    else
+                        buffSize = action.otherSize or action.selfSize or 19
+                    end
                 end
             end
         end
 
-        if shouldHide or settings and ((settings.ownOnly and (auraData and auraData.sourceUnit ~= "player")) or settings.removeDuplicates) then
+        if frameSettings then
+            if frameSettings.removeDuplicates then removeDuplicates = true end
+            if frameSettings.ownOnly then ownOnly = true end
+            if frameSettings.alwaysEnableGlow then shouldGlow = true end
+            if frameSettings.color then colorTable = frameSettings.color end
+        end
+
+        if shouldHide or (ownOnly and auraData.source ~= "player") or removeDuplicates then
             buff:ClearAllPoints()
             buff:SetPoint("TOPRIGHT", ConsolidatedBuffs, "TOPLEFT", 0, 10000);
         else
-            if settings and settings.removeDuplicates then
+            if removeDuplicates then
                 processedSpellIDs[auraData.spellId] = true
             end
 
-            local buffSize = 30
-            if sizeOverride then
-                buffSize = sizeOverride
-            elseif settings and settings.customSizeEnabled then
-                if (auraData.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(auraData.sourceUnit)) then
-                    buffSize = settings.ownSize
-                else
-                    buffSize = settings.otherSize
-                end
-            end
             buff:SetSize(buffSize, buffSize)
 
             if filters then
@@ -260,16 +259,12 @@ local function New_DebuffButton_UpdateAnchors(buttonName, index)
         end
 
         local highlightBorder = buff.highlightBorder
-        local hasCustomColor = settings and settings.color and (settings.color.r ~= 1 or settings.color.g ~= 1 or settings.color.b ~= 1 or settings.color.a ~= 1)
         local border = _G[buff:GetName().."Border"]
 
-        if (settings and settings.alwaysEnableGlow) or shouldGlow then
-            local r, g, b, a = 1, 1, 1, 1
-            if hasCustomColor then
-                r, g, b, a = settings.color.r, settings.color.g, settings.color.b, settings.color.a
-            end
-
+        if shouldGlow then
+            local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
             local retailGlow = DeBuffFilter.db.profile.enableRetailGlow
+
             if not highlightBorder then
                 highlightBorder = buff:CreateTexture(nil, "OVERLAY", nil, 7)
                 if retailGlow then
@@ -283,6 +278,7 @@ local function New_DebuffButton_UpdateAnchors(buttonName, index)
                 highlightBorder:SetBlendMode("ADD")
                 buff.highlightBorder = highlightBorder
             end
+
             local xw, hw = buff:GetSize()
             local modifier = retailGlow and 2.06 or 1.34
             highlightBorder:SetSize(xw * modifier, hw * modifier)

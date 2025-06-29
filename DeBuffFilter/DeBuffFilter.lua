@@ -7,7 +7,7 @@ local AURA_START_Y = 32
 local AURA_START_X = 5
 local fontName
 local mabs, pairs, mfloor = math.abs, pairs, math.floor
-local tinsert, tsort, tostring = table.insert, table.sort, tostring
+local tinsert, tsort = table.insert, table.sort
 local UnitBuff, UnitDebuff, UnitIsEnemy = _G.UnitBuff, _G.UnitDebuff, _G.UnitIsEnemy
 local UnitIsUnit, UnitIsOwnerOrControllerOfUnit, UnitIsFriend = _G.UnitIsUnit, _G.UnitIsOwnerOrControllerOfUnit, _G.UnitIsFriend
 local IsAddOnLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
@@ -263,14 +263,18 @@ local function combinedSort(a, b)
     if db.sortBySize and a.size ~= b.size then
         return a.size > b.size
     end
-    if db.enablePrioritySort and a.prio ~= b.prio then
+
+    if a.prio ~= b.prio then
         return a.prio > b.prio
     end
+
     return a.index < b.index
 end
 
 function DeBuffFilter:TrackAuraDuration(frame, spellId, expirationTime, duration, settings)
-    if not expirationTime or not duration then return end
+    if not expirationTime or not duration then
+        return
+    end
 
     self._trackedAuras = self._trackedAuras or {}
     self._auraState = self._auraState or {}
@@ -286,8 +290,6 @@ function DeBuffFilter:TrackAuraDuration(frame, spellId, expirationTime, duration
 
     self._auraState[frame][spellId] = self._auraState[frame][spellId] or { entered = false, exited = false }
 end
-
-
 
 local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateFunc, offsetX, mirrorAurasVertically, shouldSort)
     local db = DeBuffFilter.db.profile
@@ -306,6 +308,7 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
     local filter = (updateFunc == UpdateBuffAnchor) and "HELPFUL" or "HARMFUL"
     local processedSpellIDs = {}
     local auraList = {}
+    local prioSort = false
 
     for i = 1, numAuras do
         local aura
@@ -318,21 +321,39 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
 
         if aura and aura.name and aura.icon then
             local dbf = _G[auraName .. i]
-            local settings = DeBuffFilter:GetAuraFrameSettingsByAura(aura.name, aura.spellId, frameName)
             local filters = DeBuffFilter:GetSmartFilterSettings(aura.name, aura.spellId, frameName)
             local action = DeBuffFilter:CheckSmarterAuraFilters(aura.spellId, aura.name, aura.expirationTime, aura.applications, frameName, filters)
-            local hide = (settings and settings.hide)
-            local prio = settings and settings.priority or 0
-            local sizeOverride
+            local frameSettings = filters._frameSettings
+            local shouldBeLarge = aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
+            local buffSize = shouldBeLarge and LARGE_AURA_SIZE or SMALL_AURA_SIZE
+            local prioValue, shouldHide = 0, nil
+            local removeDuplicates, ownOnly = false, false
 
             if action then
-                for _, v in ipairs(action) do
-                    if v.hide then
-                        hide = true
+                for _, action in ipairs(action) do
+                    if action.hide then
+                        shouldHide = true
                     end
-                    if v.size and v.size.enabled then
-                        sizeOverride = v.size.value
+                    if action.size and action.size.enabled then
+                        if shouldBeLarge then
+                            buffSize = action.selfSize or action.otherSize or 21
+                        else
+                            buffSize = action.otherSize or action.selfSize or 19
+                        end
                     end
+                end
+            end
+
+            if frameSettings then
+                if frameSettings.removeDuplicates then
+                    removeDuplicates = true
+                end
+                if frameSettings.ownOnly then
+                    ownOnly = true
+                end
+                if frameSettings.priorityEnabled and frameSettings.priority and frameSettings.priority > 0 then
+                    prioValue = frameSettings.priority
+                    prioSort = true
                 end
             end
 
@@ -350,24 +371,26 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
             tinsert(auraList, {
                 aura = aura,
                 dbf = dbf,
-                hide = hide,
-                sizeOverride = sizeOverride,
-                settings = settings,
-                prio = prio,
-                index = i,
+                hide = shouldHide,
+                size = buffSize,
+                prio = prioValue,
+                ownOnly = ownOnly,
+                removeDuplicates = removeDuplicates,
                 dispelName = aura.dispelName,
+                index = i,
             })
         end
     end
 
-    if shouldSort then
+    if shouldSort or prioSort then
         tsort(auraList, combinedSort)
     end
 
     for _, data in ipairs(auraList) do
-        local aura, dbf, settings = data.aura, data.dbf, data.settings
-        local ownOnly = settings and settings.ownOnly
-        local removeDuplicates = settings and settings.removeDuplicates
+        local aura, dbf = data.aura, data.dbf
+        local ownOnly = data.ownOnly
+        local removeDuplicates = data.removeDuplicates
+        local size = data.size
 
         if not data.hide and (not ownOnly or (aura.sourceUnit == "player")) and
                 not (removeDuplicates and processedSpellIDs[aura.spellId]) then
@@ -379,15 +402,6 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
             local shouldBeLarge = aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
             if shouldBeLarge then
                 offsetY = yDistance * 2
-            end
-
-            size = data.sizeOverride
-            if not size then
-                if settings and settings.customSizeEnabled then
-                    size = shouldBeLarge and settings.ownSize or settings.otherSize
-                else
-                    size = shouldBeLarge and LARGE_AURA_SIZE or SMALL_AURA_SIZE
-                end
             end
 
             if lastBuff == nil then
@@ -439,7 +453,6 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
     end
 end
 
-
 local function Filterino(self)
     if self and (not (self == TargetFrame or self == FocusFrame) or self:IsForbidden()) then
         return
@@ -463,12 +476,12 @@ local function Filterino(self)
             frameName = selfName .. "Buff" .. i
             frame = _G[frameName]
             local frameStealable = _G[frameName .. "Stealable"]
-            local settings = DeBuffFilter:GetAuraFrameSettingsByAura(buffName, spellId, selfName)
             local filters = DeBuffFilter:GetSmartFilterSettings(buffName, spellId, selfName)
             local action = DeBuffFilter:CheckSmarterAuraFilters(spellId, buffName, expirationTime, count, selfName, filters)
+            local frameSettings = filters._frameSettings
             local shouldBeLarge = caster and DeBuffFilter:ShouldAuraBeLarge(caster)
             local buffSize = shouldBeLarge and db.selfSize or db.otherSize
-            local actionSize, shouldHide, shouldGlow = nil, nil, nil
+            local shouldHide, shouldGlow, colorTable = nil, nil, { r = 1, g = 1, b = 0.85, a = 1 }
 
             if action then
                 for _, action in ipairs(action) do
@@ -479,19 +492,21 @@ local function Filterino(self)
                         shouldGlow = true
                     end
                     if action.size and action.size.enabled then
-                        buffSize = action.size.value
-                        actionSize = true
+                        if shouldBeLarge then
+                            buffSize = action.selfSize or action.otherSize or 21
+                        else
+                            buffSize = action.otherSize or action.selfSize or 19
+                        end
                     end
                 end
             end
 
-            if not actionSize then
-                if settings and settings.customSizeEnabled then
-                    if shouldBeLarge then
-                        buffSize = settings.ownSize
-                    else
-                        buffSize = settings.otherSize
-                    end
+            if frameSettings then
+                if frameSettings.alwaysEnableGlow then
+                    shouldGlow = true
+                end
+                if frameSettings.color then
+                    colorTable = frameSettings.color
                 end
             end
 
@@ -545,21 +560,9 @@ local function Filterino(self)
                 texturePath = "Interface\\AddOns\\DeBuffFilter\\newexp"
             end
 
-            local showGlow = false
-            if shouldGlow or (settings and settings.alwaysEnableGlow) then
-                showGlow = true
-            end
-
-            if (db.customHighlight or showGlow) and frameStealable then
-                if icon and (db.highlightAll and debuffType == "Magic" and isEnemy) or showGlow then
-                    local hasCustomColor = settings and settings.color and (settings.color.r ~= 1 or settings.color.g ~= 1 or settings.color.b ~= 1 or settings.color.a ~= 1)
-                    local r, g, b, a
-                    if hasCustomColor then
-                        r, g, b, a = settings.color.r, settings.color.g, settings.color.b, settings.color.a
-                    else
-                        r, g, b, a = 1, 1, 0.85, 1
-                    end
-
+            if frameStealable then
+                if icon and (db.highlightAll and debuffType == "Magic") or shouldGlow then
+                    local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
                     frameStealable:Show()
                     frameStealable:SetHeight(buffSize * modifier)
                     frameStealable:SetWidth(buffSize * modifier)
@@ -593,13 +596,13 @@ local function Filterino(self)
                 end
                 local countSize = db.enableFancyCount and db.countSize or (buffSize / 1.75)
                 frameCount:SetFont(fontName, countSize, "OUTLINE, THICKOUTLINE, MONOCHROME")
-                local color = db.countColor or {1, 1, 1}
+                local color = db.countColor or { 1, 1, 1 }
                 frameCount:SetVertexColor(color[1], color[2], color[3])
             end
 
             numBuffs = numBuffs + 1
 
-            if not (settings and settings.hide) and not shouldHide then
+            if not shouldHide then
                 numBuff = numBuff + 1
             end
 
@@ -618,13 +621,13 @@ local function Filterino(self)
                 frameName = selfName .. "Debuff" .. frameNum
                 frame = _G[frameName]
                 local debuffBorder = _G[frameName .. "Border"]
-                local settings = DeBuffFilter:GetAuraFrameSettingsByAura(debuffName, spellId, selfName)
                 local filters = DeBuffFilter:GetSmartFilterSettings(debuffName, spellId, selfName)
                 local action = DeBuffFilter:CheckSmarterAuraFilters(spellId, debuffName, expirationTime, count, selfName, filters)
+                local frameSettings = filters._frameSettings
                 local shouldBeLarge = caster and DeBuffFilter:ShouldAuraBeLarge(caster)
                 local modifier = 1.34
                 local buffSize = shouldBeLarge and db.selfSize or db.otherSize
-                local actionSize, shouldHide, shouldGlow = nil, nil, nil
+                local shouldHide, shouldGlow, colorTable = nil, nil, { r = 1, g = 1, b = 0.85, a = 1 }
 
                 if action then
                     for _, action in ipairs(action) do
@@ -635,19 +638,35 @@ local function Filterino(self)
                             shouldGlow = true
                         end
                         if action.size and action.size.enabled then
-                            buffSize = action.size.value
-                            actionSize = true
+                            if shouldBeLarge then
+                                buffSize = action.selfSize or action.otherSize or 21
+                            else
+                                buffSize = action.otherSize or action.selfSize or 19
+                            end
                         end
                     end
                 end
 
-                if not actionSize then
-                    if settings and settings.customSizeEnabled then
-                        if shouldBeLarge then
-                            buffSize = settings.ownSize
-                        else
-                            buffSize = settings.otherSize
+                if action then
+                    for _, action in ipairs(action) do
+                        if action.hide then
+                            shouldHide = true
                         end
+                        if action.glow then
+                            shouldGlow = true
+                        end
+                        if action.size and action.size.enabled then
+                            buffSize = shouldBeLarge and action.selfSize or action.otherSize
+                        end
+                    end
+                end
+
+                if frameSettings then
+                    if frameSettings.alwaysEnableGlow then
+                        shouldGlow = true
+                    end
+                    if frameSettings.color then
+                        colorTable = frameSettings.color
                     end
                 end
 
@@ -656,16 +675,10 @@ local function Filterino(self)
                     texturePath = "Interface\\AddOns\\DeBuffFilter\\newexp"
                 end
 
-                local showGlow = false
-                if shouldGlow or (settings and settings.alwaysEnableGlow) then
-                    showGlow = true
-                end
+                local frameStealable = _G[frameName .. "Stealable"]
 
-                if db.customHighlight and showGlow then
-                    local frameStealable = _G[frameName .. "Stealable"]
-                    local hasCustomColor = settings and settings.color and (settings.color.r ~= 1 or settings.color.g ~= 1 or settings.color.b ~= 1 or settings.color.a ~= 1)
-
-                    if not frameStealable and frame and hasCustomColor then
+                if shouldGlow then
+                    if not frameStealable and frame and colorTable then
                         frameStealable = frame:CreateTexture(frameName .. "Stealable", "OVERLAY")
                         frameStealable:SetTexture(texturePath)
                         if retailGlow then
@@ -676,12 +689,7 @@ local function Filterino(self)
                     end
 
                     if frameStealable then
-                        local r, g, b, a
-                        if hasCustomColor then
-                            r, g, b, a = settings.color.r, settings.color.g, settings.color.b, settings.color.a
-                        else
-                            r, g, b, a = 1, 1, 0.85, 1
-                        end
+                        local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
                         frameStealable:Show()
                         frameStealable:SetHeight(buffSize * modifier)
                         frameStealable:SetWidth(buffSize * modifier)
@@ -694,13 +702,13 @@ local function Filterino(self)
                         if retailGlow then
                             frameStealable:SetDesaturated(true)
                         end
-                    else
-                        if frameStealable then
-                            frameStealable:Hide()
-                        end
-                        if debuffBorder then
-                            debuffBorder:Show()
-                        end
+                    end
+                else
+                    if frameStealable then
+                        frameStealable:Hide()
+                    end
+                    if debuffBorder then
+                        debuffBorder:Show()
                     end
                 end
 
@@ -711,14 +719,14 @@ local function Filterino(self)
                     end
                     frameCount:SetFont(fontName, buffSize / 1.75, "OUTLINE, THICKOUTLINE, MONOCHROME")
 
-                    local color = db.countColor or {1, 1, 1}
+                    local color = db.countColor or { 1, 1, 1 }
                     frameCount:SetVertexColor(color[1], color[2], color[3])
                 end
 
                 numDebuffs = numDebuffs + 1
                 frameNum = frameNum + 1
 
-                if not (settings and settings.hide) and not shouldHide then
+                if not shouldHide then
                     numDebuff = numDebuff + 1
                 end
             end
@@ -746,7 +754,7 @@ local function Filterino(self)
         self.debuffz:SetSize(10, 10)
     end
 
-    local sortOrDefault = (db.sortBySize or db.sortbyDispellable or db.enablePrioritySort)
+    local sortOrDefault = (db.sortBySize or db.sortbyDispellable)
 
     if isEnemy then
         updateLayout(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
@@ -810,7 +818,9 @@ local interval = 0.1
 local lastUpdate = 0
 DeBuffFilter.event:SetScript("OnUpdate", function(self, elapsed)
     lastUpdate = lastUpdate + elapsed
-    if lastUpdate < interval then return end
+    if lastUpdate < interval then
+        return
+    end
     lastUpdatef = 0
 
     local now = GetTime()
