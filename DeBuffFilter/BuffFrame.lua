@@ -186,9 +186,8 @@ local function New_DebuffButton_UpdateAnchors(buttonName, index)
             return
         end
 
-        local filters = DeBuffFilter:GetSmartFilterSettings(auraData.name, auraData.spellId, "BuffFrame")
-        local action = DeBuffFilter:CheckSmarterAuraFilters(auraData.spellId, auraData.name, auraData.expirationTime, auraData.applications, "BuffFrame", filters)
-        local frameSettings = filters._frameSettings
+        local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(auraData.spellId, auraData.name, auraData.expirationTime, auraData.applications, "BuffFrame")
+        if not frameSettings then frameSettings = {} end
         local shouldBeLarge = auraData.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(auraData.sourceUnit)
         local shouldHide, buffSize, shouldGlow, colorTable = false, 30, false, { r = 1, g = 1, b = 0.85, a = 1 }
         local removeDuplicates, ownOnly = false, false

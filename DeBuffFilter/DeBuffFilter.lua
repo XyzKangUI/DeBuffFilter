@@ -99,43 +99,6 @@ local function safeSetPoint(frame, point, relativeTo, relativePoint, x, y)
     frame:SetPoint(point, relativeTo, relativePoint, x, y)
 end
 
-function DeBuffFilter:CheckSmarterAuraFilters(spellId, auraName, expirationTime, stacks, frameName, filters)
-    if not filters then
-        return nil
-    end
-
-    local actions = {}
-
-    for _, settings in ipairs(filters) do
-        local passDuration = not settings.enableDurationFilter
-        if settings.enableDurationFilter then
-            local currentDuration = expirationTime and (expirationTime - GetTime()) or 0
-            passDuration = (settings.minDuration <= 0 or currentDuration >= settings.minDuration) and
-                    (settings.maxDuration <= 0 or currentDuration <= settings.maxDuration)
-        end
-
-        local passStacks = not settings.enableStacksFilter
-        if settings.enableStacksFilter then
-            if stacks == nil then
-                passStacks = (settings.minStacks <= 0 and settings.maxStacks <= 0)
-            else
-                passStacks = (settings.minStacks <= 0 or stacks >= settings.minStacks) and
-                        (settings.maxStacks <= 0 or stacks <= settings.maxStacks)
-            end
-        end
-
-        if passDuration and passStacks then
-            table.insert(actions, settings.action)
-        end
-    end
-
-    if #actions > 0 then
-        return actions
-    else
-        return nil
-    end
-end
-
 local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, offsetX, offsetY, mirrorVertically, newRow)
     local point, relativePoint
     local startY, auraOffsetY
@@ -297,13 +260,6 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
     local SMALL_AURA_SIZE = db.otherSize
     local maxRowWidth = db.auraWidth
     local yDistance = db.verticalSpace
-    local offsetY = yDistance
-    local size, biggestAura
-    local rowWidth = 0
-    local anchorRowAura, lastBuff = nil, nil
-    local haveToT = frame.totFrame and frame.totFrame:IsShown()
-    local totFrameX, totFrameBottom = GetFramePosition(frame.totFrame)
-    local currentX, currentY
     local frameName = frame.unit == "target" and "TargetFrame" or frame.unit == "focus" and "FocusFrame"
     local filter = (updateFunc == UpdateBuffAnchor) and "HELPFUL" or "HARMFUL"
     local processedSpellIDs = {}
@@ -313,33 +269,33 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
     for i = 1, numAuras do
         local aura
         if isClassic then
-            local name, icon, count, dispelType, _, expirationTime, source, _, _, spellId = LibClassicDurations:UnitAura(frame.unit, i, filter)
-            aura = { name = name, icon = icon, spellId = spellId, sourceUnit = source, dispelName = dispelType, expirationTime = expirationTime, applications = count }
+            local name, icon, count, dispelType, _, expirationTime, source, _, _, spellID = LibClassicDurations:UnitAura(frame.unit, i, filter)
+            aura = { name = name, icon = icon, spellId = spellID, sourceUnit = source, dispelName = dispelType, expirationTime = expirationTime, applications = count }
         else
             aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
         end
 
-        if aura and aura.name and aura.icon then
-            local dbf = _G[auraName .. i]
-            local filters = DeBuffFilter:GetSmartFilterSettings(aura.name, aura.spellId, frameName)
-            local action = DeBuffFilter:CheckSmarterAuraFilters(aura.spellId, aura.name, aura.expirationTime, aura.applications, frameName, filters)
-            local frameSettings = filters._frameSettings
-            local shouldBeLarge = aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
-            local buffSize = shouldBeLarge and LARGE_AURA_SIZE or SMALL_AURA_SIZE
-            local prioValue, shouldHide = 0, nil
-            local removeDuplicates, ownOnly = false, false
+        local dbf = _G[auraName .. i]
+        local isVisible = false
+        local shouldHide, prioValue, removeDuplicates, ownOnly = nil, 0, false, false
+        local buffSize = SMALL_AURA_SIZE
+        local shouldBeLarge = aura and aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
+
+        if aura and aura.name and aura.icon and dbf then
+            if shouldBeLarge then
+                buffSize = LARGE_AURA_SIZE
+            end
+            local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(aura.spellId, aura.name, aura.expirationTime, aura.applications, frameName)
+            frameSettings = frameSettings or {}
 
             if action then
-                for _, action in ipairs(action) do
-                    if action.hide then
+                for _, filter in ipairs(action) do
+                    if filter.hide then
                         shouldHide = true
                     end
-                    if action.size and action.size.enabled then
-                        if shouldBeLarge then
-                            buffSize = action.selfSize or action.otherSize or 21
-                        else
-                            buffSize = action.otherSize or action.selfSize or 19
-                        end
+                    if filter.size and filter.size.enabled then
+                        buffSize = shouldBeLarge and (filter.selfSize or filter.otherSize or 21)
+                                or (filter.otherSize or filter.selfSize or 19)
                     end
                 end
             end
@@ -357,6 +313,7 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 end
             end
 
+            local filters = DeBuffFilter:GetSmartFilterSettings(aura.name, aura.spellId, frameName)
             if filters then
                 for _, settings in ipairs(filters) do
                     if settings.enableDurationFilter then
@@ -368,17 +325,25 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 end
             end
 
+            isVisible = not shouldHide and (not ownOnly or (aura.sourceUnit == "player")) and
+                    not (removeDuplicates and processedSpellIDs[aura.spellId])
+
+            if isVisible and removeDuplicates then
+                processedSpellIDs[aura.spellId] = true
+            end
+
             tinsert(auraList, {
                 aura = aura,
                 dbf = dbf,
-                hide = shouldHide,
                 size = buffSize,
                 prio = prioValue,
-                ownOnly = ownOnly,
-                removeDuplicates = removeDuplicates,
                 dispelName = aura.dispelName,
                 index = i,
+                isVisible = isVisible
             })
+        elseif dbf then
+            dbf:ClearAllPoints()
+            dbf:SetPoint("CENTER", frame, "CENTER", 100000, 100000)
         end
     end
 
@@ -386,19 +351,15 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
         tsort(auraList, combinedSort)
     end
 
+    local rowWidth, anchorRowAura, lastBuff = 0, nil, nil
+    local biggestAura, offsetY = nil, yDistance
+    local haveToT = frame.totFrame and frame.totFrame:IsShown()
+    local totFrameX, totFrameBottom = GetFramePosition(frame.totFrame)
+    local currentX, currentY
+
     for _, data in ipairs(auraList) do
-        local aura, dbf = data.aura, data.dbf
-        local ownOnly = data.ownOnly
-        local removeDuplicates = data.removeDuplicates
-        local size = data.size
-
-        if not data.hide and (not ownOnly or (aura.sourceUnit == "player")) and
-                not (removeDuplicates and processedSpellIDs[aura.spellId]) then
-
-            if removeDuplicates then
-                processedSpellIDs[aura.spellId] = true
-            end
-
+        local aura, dbf, size = data.aura, data.dbf, data.size
+        if data.isVisible then
             local shouldBeLarge = aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
             if shouldBeLarge then
                 offsetY = yDistance * 2
@@ -438,7 +399,6 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
 
             lastBuff = dbf
             currentX, currentY = dbf:GetLeft(), dbf:GetTop()
-
             if not biggestAura or biggestAura < size then
                 biggestAura = size
             end
@@ -462,7 +422,6 @@ local function Filterino(self)
     local frameIcon, frameCount, frameCooldown
     local selfName = self:GetName()
     local numDebuffs, numBuffs = 0, 0
-    local numDebuff, numBuff = 0, 0
     local playerIsTarget = UnitIsUnit("player", self.unit)
     local isEnemy = UnitIsEnemy("player", self.unit)
     local buffDetect = isClassic and LibClassicDurations.UnitAuraWithBuffs or UnitBuff
@@ -476,9 +435,10 @@ local function Filterino(self)
             frameName = selfName .. "Buff" .. i
             frame = _G[frameName]
             local frameStealable = _G[frameName .. "Stealable"]
-            local filters = DeBuffFilter:GetSmartFilterSettings(buffName, spellId, selfName)
-            local action = DeBuffFilter:CheckSmarterAuraFilters(spellId, buffName, expirationTime, count, selfName, filters)
-            local frameSettings = filters._frameSettings
+            local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(spellId, buffName, expirationTime, count, selfName)
+            if not frameSettings then
+                frameSettings = {}
+            end
             local shouldBeLarge = caster and DeBuffFilter:ShouldAuraBeLarge(caster)
             local buffSize = shouldBeLarge and db.selfSize or db.otherSize
             local shouldHide, shouldGlow, colorTable = nil, nil, { r = 1, g = 1, b = 0.85, a = 1 }
@@ -601,11 +561,6 @@ local function Filterino(self)
             end
 
             numBuffs = numBuffs + 1
-
-            if not shouldHide then
-                numBuff = numBuff + 1
-            end
-
         else
             break
         end
@@ -621,9 +576,10 @@ local function Filterino(self)
                 frameName = selfName .. "Debuff" .. frameNum
                 frame = _G[frameName]
                 local debuffBorder = _G[frameName .. "Border"]
-                local filters = DeBuffFilter:GetSmartFilterSettings(debuffName, spellId, selfName)
-                local action = DeBuffFilter:CheckSmarterAuraFilters(spellId, debuffName, expirationTime, count, selfName, filters)
-                local frameSettings = filters._frameSettings
+                local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(spellId, debuffName, expirationTime, count, selfName)
+                if not frameSettings then
+                    frameSettings = {}
+                end
                 local shouldBeLarge = caster and DeBuffFilter:ShouldAuraBeLarge(caster)
                 local modifier = 1.34
                 local buffSize = shouldBeLarge and db.selfSize or db.otherSize
@@ -725,10 +681,6 @@ local function Filterino(self)
 
                 numDebuffs = numDebuffs + 1
                 frameNum = frameNum + 1
-
-                if not shouldHide then
-                    numDebuff = numDebuff + 1
-                end
             end
         else
             break
@@ -757,11 +709,11 @@ local function Filterino(self)
     local sortOrDefault = (db.sortBySize or db.sortbyDispellable)
 
     if isEnemy then
-        updateLayout(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
-        updateLayout(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
+        updateLayout(self, selfName .. "Debuff", numDebuffs, numBuffs, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
+        updateLayout(self, selfName .. "Buff", numBuffs, numDebuffs, UpdateBuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
     else
-        updateLayout(self, selfName .. "Buff", numBuffs, numDebuff, UpdateBuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
-        updateLayout(self, selfName .. "Debuff", numDebuffs, numBuff, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
+        updateLayout(self, selfName .. "Buff", numBuffs, numDebuffs, UpdateBuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
+        updateLayout(self, selfName .. "Debuff", numDebuffs, numBuffs, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
     end
 
     if self.spellbar then
@@ -821,7 +773,7 @@ DeBuffFilter.event:SetScript("OnUpdate", function(self, elapsed)
     if lastUpdate < interval then
         return
     end
-    lastUpdatef = 0
+    lastUpdate = 0
 
     local now = GetTime()
     local stateTable = DeBuffFilter._auraState or {}
