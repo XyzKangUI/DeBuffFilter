@@ -431,7 +431,7 @@ local function Filterino(self)
 
     for i = 1, MAX_TARGET_BUFFS do
         local buffName, icon, count, debuffType, duration, expirationTime, caster, canStealOrPurge, _, spellId = buffDetect(self.unit, i, "HELPFUL")
-        if buffName then
+        if buffName and icon then
             frameName = selfName .. "Buff" .. i
             frame = _G[frameName]
             local frameStealable = _G[frameName .. "Stealable"]
@@ -473,94 +473,93 @@ local function Filterino(self)
             local modifier = 1.34
             local stockR, stockG, stockB = 1, 1, 1
 
-            if isClassic then
-                if not frame then
-                    if not icon then
-                        break
-                    end
-                    frame = CreateFrame("Button", frameName, self, "TargetBuffFrameTemplate")
-                    frame.unit = self.unit
-                end
+            if isClassic and not frame then
+                frame = CreateFrame("Button", frameName, self, "TargetBuffFrameTemplate")
+                frame.unit = self.unit
+            end
 
+            if frame then
                 if icon and (not self.maxBuffs or i <= self.maxBuffs) then
-                    frame:SetID(i)
-                    frameIcon = _G[frameName .. "Icon"]
-                    frameIcon:SetTexture(icon)
-                    frameCount = _G[frameName .. "Count"]
-                    if count and count > 1 and self.showAuraCount then
-                        frameCount:SetText(count)
-                        frameCount:Show()
-                    else
-                        frameCount:Hide()
+                    if isClassic then
+                        frame:SetID(i)
+                        frameIcon = _G[frameName .. "Icon"]
+                        frameIcon:SetTexture(icon)
+                        frameCount = _G[frameName .. "Count"]
+                        if count and count > 1 and self.showAuraCount then
+                            frameCount:SetText(count)
+                            frameCount:Show()
+                        else
+                            frameCount:Hide()
+                        end
+                        frameCooldown = _G[frameName .. "Cooldown"]
+                        CooldownFrame_Set(frameCooldown, expirationTime - duration, duration, duration > 0, true)
+
+                        if isEnemy and UnitBuff(frame.unit, i, "HELPFUL") == nil then
+                            frame:SetScript("OnEnter", function(self)
+                                GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT", 15, -25)
+                                GameTooltip:SetSpellByID(spellId)
+                                GameTooltip:Show()
+                            end)
+
+                            frame:SetScript("OnLeave", function(self)
+                                GameTooltip:Hide()
+                            end)
+                        end
                     end
-                    frameCooldown = _G[frameName .. "Cooldown"]
-                    CooldownFrame_Set(frameCooldown, expirationTime - duration, duration, duration > 0, true)
+
+                    if retailGlow then
+                        modifier = 2.06
+                        stockR, stockG, stockB = 1, 1, 0.75
+                        texturePath = "Interface\\AddOns\\DeBuffFilter\\newexp"
+                    end
+
+                    if frameStealable then
+                        if icon and (db.highlightAll and debuffType == "Magic") or shouldGlow then
+                            local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
+                            frameStealable:Show()
+                            frameStealable:SetHeight(buffSize * modifier)
+                            frameStealable:SetWidth(buffSize * modifier)
+                            frameStealable:SetVertexColor(r, g, b, a)
+                            if retailGlow and not frameStealable.newTexture then
+                                frameStealable.newTexture = true
+                                frameStealable:SetTexture(texturePath)
+                                frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
+                                frameStealable:SetDesaturated(true)
+                            end
+                        elseif not playerIsTarget and isEnemy and canStealOrPurge then
+                            frameStealable:Show()
+                            frameStealable:SetHeight(buffSize * modifier)
+                            frameStealable:SetWidth(buffSize * modifier)
+                            frameStealable:SetVertexColor(stockR, stockG, stockB)
+                            if retailGlow and not frameStealable.newTexture then
+                                frameStealable.newTexture = true
+                                frameStealable:SetTexture(texturePath)
+                                frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
+                                frameStealable:SetDesaturated(true)
+                            end
+                        else
+                            frameStealable:Hide()
+                        end
+                    end
+
+                    local frameCount = _G[frameName .. "Count"]
+                    if frameCount then
+                        if not fontName then
+                            fontName = frameCount:GetFont()
+                        end
+                        local countSize = db.enableFancyCount and db.countSize or (buffSize / 1.75)
+                        frameCount:SetFont(fontName, countSize, "OUTLINE, THICKOUTLINE, MONOCHROME")
+                        local color = db.countColor or { 1, 1, 1 }
+                        frameCount:SetVertexColor(color[1], color[2], color[3])
+                    end
+
+                    numBuffs = numBuffs + 1
                     frame:ClearAllPoints()
                     frame:Show()
-
-                    if isEnemy and UnitBuff(frame.unit, i, "HELPFUL") == nil then
-                        frame:SetScript("OnEnter", function(self)
-                            GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT", 15, -25)
-                            GameTooltip:SetSpellByID(spellId)
-                            GameTooltip:Show()
-                        end)
-
-                        frame:SetScript("OnLeave", function(self)
-                            GameTooltip:Hide()
-                        end)
-                    end
-                elseif frame then
+                else
                     frame:Hide()
                 end
             end
-
-            if retailGlow then
-                modifier = 2.06
-                stockR, stockG, stockB = 1, 1, 0.75
-                texturePath = "Interface\\AddOns\\DeBuffFilter\\newexp"
-            end
-
-            if frameStealable then
-                if icon and (db.highlightAll and debuffType == "Magic") or shouldGlow then
-                    local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
-                    frameStealable:Show()
-                    frameStealable:SetHeight(buffSize * modifier)
-                    frameStealable:SetWidth(buffSize * modifier)
-                    frameStealable:SetVertexColor(r, g, b, a)
-                    if retailGlow and not frameStealable.newTexture then
-                        frameStealable.newTexture = true
-                        frameStealable:SetTexture(texturePath)
-                        frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
-                        frameStealable:SetDesaturated(true)
-                    end
-                elseif not playerIsTarget and isEnemy and canStealOrPurge then
-                    frameStealable:Show()
-                    frameStealable:SetHeight(buffSize * modifier)
-                    frameStealable:SetWidth(buffSize * modifier)
-                    frameStealable:SetVertexColor(stockR, stockG, stockB)
-                    if retailGlow and not frameStealable.newTexture then
-                        frameStealable.newTexture = true
-                        frameStealable:SetTexture(texturePath)
-                        frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
-                        frameStealable:SetDesaturated(true)
-                    end
-                else
-                    frameStealable:Hide()
-                end
-            end
-
-            local frameCount = _G[frameName .. "Count"]
-            if frameCount then
-                if not fontName then
-                    fontName = frameCount:GetFont()
-                end
-                local countSize = db.enableFancyCount and db.countSize or (buffSize / 1.75)
-                frameCount:SetFont(fontName, countSize, "OUTLINE, THICKOUTLINE, MONOCHROME")
-                local color = db.countColor or { 1, 1, 1 }
-                frameCount:SetVertexColor(color[1], color[2], color[3])
-            end
-
-            numBuffs = numBuffs + 1
         else
             break
         end
