@@ -1,6 +1,6 @@
 ## Interface: 11507, 40402, 50500
 ## Title: DeBuffFilter
-## Version: v5.2
+## Version: v5.2.1
 ## Notes: discord.gg/CtxPasSQnQ
 ## Author: Xyz, Asuri (bugs, jk)
 ## SavedVariables: DeBuffFilterDB
