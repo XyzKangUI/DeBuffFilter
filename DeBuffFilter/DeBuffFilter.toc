@@ -1,9 +1,10 @@
-## Interface: 11507, 40402, 50500
+## Interface: 20505
 ## Title: DeBuffFilter
-## Version: v5.2.1
+## Version: v5.3
 ## Notes: discord.gg/CtxPasSQnQ
 ## Author: Xyz, Asuri (bugs, jk)
 ## SavedVariables: DeBuffFilterDB
+## IconTexture: Interface\AddOns\DeBuffFilter\icon
 
 Embeds.xml
 Options.lua

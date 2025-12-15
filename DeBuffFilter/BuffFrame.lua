@@ -1,9 +1,7 @@
 local AddonName = "DeBuffFilter"
 
 local DeBuffFilter = LibStub:GetLibrary(AddonName, true)
-local BUFF_BUTTON_HEIGHT = 30
-local BUFF_HORIZ_SPACING = -5
-local format, gsub = string.format, string.gsub
+local ipairs, tinsert = ipairs, table.insert
 
 local function durationPos(duration)
     local xPos = DeBuffFilter.db.profile.buffFrameDurationXPos or 0
@@ -13,299 +11,173 @@ local function durationPos(duration)
     duration:SetPoint("BOTTOM", duration:GetParent(), "BOTTOM", xPos, yPos)
 end
 
-local function New_BuffFrame_UpdateAllBuffAnchors()
-    local buff, previousBuff, aboveBuff, index
-    local processedSpellIDs = {}
-    local numBuffs = 0;
-    local numAuraRows = 0;
-    local slack = BuffFrame.numEnchants
-    if BuffFrame.numConsolidated and (BuffFrame.numConsolidated > 0) then
-        slack = slack + 1;    -- one icon for all consolidated buffs
-    end
-    local BUFFS_PER_ROW = DeBuffFilter.db.profile.buffFrameBuffsPerRow
+local function DBFrame(self)
+    local framesToLayout = {}
+    local seenSpells = {}
+    local isDebuff = self == DebuffFrame
+    local filter = isDebuff and "HARMFUL" or "HELPFUL"
+    local frameName = isDebuff and "DebuffFrame" or "BuffFrame"
+    local db = DeBuffFilter.db.profile
 
-    for i = 1, BUFF_ACTUAL_DISPLAY do
-        buff = _G["BuffButton" .. i];
-        local parent = buff and buff.parent
-        local auraData = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
-        if not auraData or not auraData.name then
-            return
-        end
+    for i, auraInfo in ipairs(self.auraInfo or {}) do
+        local auraFrame = self.auraFrames[i]
 
-        local filters = DeBuffFilter:GetSmartFilterSettings(auraData.name, auraData.spellId, "BuffFrame")
-        local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(auraData.spellId, auraData.name, auraData.expirationTime, auraData.applications, "BuffFrame")
-        if not frameSettings then
-            frameSettings = {}
-        end
-        local shouldBeLarge = auraData.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(auraData.sourceUnit)
-        local shouldHide, buffSize, shouldGlow, colorTable = false, 30, false, { r = 1, g = 1, b = 0.85, a = 1 }
-        local removeDuplicates, ownOnly = false, false
+        if auraFrame and auraFrame:IsShown() then
+            local shouldHide, shouldGlow, colorTable = false, false, { r = 1, g = 1, b = 0.85, a = 1 }
+            local removeDuplicates = false
+            local name, count, duration, expirationTime, source, spellId
+            local currentSize = nil
 
-        if action then
-            for _, action in ipairs(action) do
-                if action.hide then
-                    shouldHide = true
-                end
-                if action.glow then
-                    shouldGlow = true
-                end
-                if action.size and action.size.enabled then
-                    if shouldBeLarge then
-                        buffSize = action.selfSize or action.otherSize or 21
-                    else
-                        buffSize = action.otherSize or action.selfSize or 19
-                    end
-                end
-            end
-        end
-
-        if frameSettings then
-            if frameSettings.removeDuplicates then removeDuplicates = true end
-            if frameSettings.ownOnly then ownOnly = true end
-            if frameSettings.alwaysEnableGlow then shouldGlow = true end
-            if frameSettings.color then colorTable = frameSettings.color end
-        end
-
-        if shouldHide or (ownOnly and auraData.sourceUnit ~= "player") or removeDuplicates then
-            buff:ClearAllPoints()
-            buff:SetPoint("TOPRIGHT", ConsolidatedBuffs, "TOPLEFT", 0, 10000);
-        else
-            if removeDuplicates then
-                processedSpellIDs[auraData.spellId] = true
-            end
-
-            buff:SetSize(buffSize, buffSize)
-
-            if filters then
-                for _, settings in ipairs(filters) do
-                    if settings.enableDurationFilter then
-                        local timeLeft = auraData.expirationTime and (auraData.expirationTime - GetTime()) or 0
-                        local duration = auraData.duration or timeLeft
-                        DeBuffFilter:TrackAuraDuration(_G["BuffFrame"], auraData.spellId, auraData.expirationTime, duration, settings)
-                        break
-                    end
-                end
-            end
-
-            if (buff.consolidated) then
-                if (parent == BuffFrame) then
-                    buff:SetParent(ConsolidatedBuffsContainer);
-                    parent = ConsolidatedBuffsContainer;
-                end
+            local buttonInfo = auraFrame.buttonInfo
+            if buttonInfo and buttonInfo.IsTempEnchant then
+                spellId = buttonInfo.ID
+                expirationTime = buttonInfo.expirationTime
+                name = "Temp Enchant"
+                source = "player"
+                count = 0
+                duration = 0
             else
-                numBuffs = numBuffs + 1;
-                index = numBuffs + slack;
-                if (parent ~= BuffFrame) then
-                    buff.count:SetFontObject(NumberFontNormal);
-                    buff:SetParent(BuffFrame);
-                    parent = BuffFrame;
+                local auraData = C_UnitAuras.GetAuraDataByIndex("player", auraInfo.index, filter)
+                if auraData then
+                    spellId = auraData.spellId
+                    name = auraData.name
+                    expirationTime = auraData.expirationTime
+                    count = auraData.applications
+                    source = auraData.sourceUnit
                 end
-                buff:ClearAllPoints();
-                if ((index > 1) and (mod(index, BUFFS_PER_ROW) == 1)) then
-                    -- New row
-                    if (index == BUFFS_PER_ROW + 1) then
-                        buff:SetPoint("TOPRIGHT", ConsolidatedBuffs, "BOTTOMRIGHT", 0, -BUFF_ROW_SPACING);
-                    else
-                        buff:SetPoint("TOPRIGHT", aboveBuff, "BOTTOMRIGHT", 0, -BUFF_ROW_SPACING);
-                    end
-                    aboveBuff = buff;
-                elseif (index == 1) then
-                    numAuraRows = 1;
-                    buff:SetPoint("TOPRIGHT", BuffFrame, "TOPRIGHT", 0, 0);
-                    aboveBuff = buff;
-                else
-                    if (numBuffs == 1) then
-                        if (BuffFrame.numEnchants > 0) then
-                            buff:SetPoint("TOPRIGHT", "TemporaryEnchantFrame", "TOPLEFT", BUFF_HORIZ_SPACING, 0);
-                            aboveBuff = TemporaryEnchantFrame;
-                        else
-                            buff:SetPoint("TOPRIGHT", ConsolidatedBuffs, "TOPLEFT", BUFF_HORIZ_SPACING, 0);
+            end
+
+            if spellId and DeBuffFilter then
+                local filters = DeBuffFilter:GetSmartFilterSettings(name, spellId, frameName)
+                local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(spellId, name, expirationTime, count, frameName)
+
+                if filters then
+                    for _, settings in ipairs(filters) do
+                        if settings.enableDurationFilter then
+                            local timeLeft = expirationTime and (expirationTime - GetTime()) or 0
+                            local finalDuration = duration or timeLeft
+
+                            DeBuffFilter:TrackAuraDuration(self, spellId, expirationTime, finalDuration, settings)
+                            break
                         end
+                    end
+                end
+
+                if action then
+                    for _, act in ipairs(action) do
+                        if act.hide then
+                            shouldHide = true
+                        end
+                        if act.glow then
+                            shouldGlow = true
+                        end
+                        if act.size and act.size.enabled then
+                            if source == "player" then
+                                currentSize = act.selfSize
+                            else
+                                currentSize = act.otherSize
+                            end
+                        end
+                    end
+                end
+
+                if frameSettings then
+                    if frameSettings.removeDuplicates then
+                        removeDuplicates = true
+                    end
+                    if frameSettings.ownOnly and source ~= "player" then
+                        shouldHide = true
+                    end
+                    if frameSettings.alwaysEnableGlow then
+                        shouldGlow = true
+                    end
+                    if frameSettings.color then
+                        colorTable = frameSettings.color
+                    end
+                end
+
+                if not shouldHide and removeDuplicates then
+                    if seenSpells[spellId] then
+                        shouldHide = true
                     else
-                        buff:SetPoint("RIGHT", previousBuff, "LEFT", BUFF_HORIZ_SPACING, 0);
-                    end
-                end
-                previousBuff = buff;
-            end
-        end
-
-        local highlightBorder = buff.highlightBorder
-
-        if shouldGlow then
-            local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
-            local retailGlow = DeBuffFilter.db.profile.enableRetailGlow
-            if not highlightBorder then
-                highlightBorder = buff:CreateTexture(nil, "OVERLAY", nil, 7)
-                if retailGlow then
-                    highlightBorder:SetTexture("Interface\\AddOns\\DeBuffFilter\\newexp")
-                    highlightBorder:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
-                    highlightBorder:SetDesaturated(true)
-                else
-                    highlightBorder:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Stealable")
-                end
-                highlightBorder:SetPoint("CENTER", 0, 0)
-                highlightBorder:SetBlendMode("ADD")
-                buff.highlightBorder = highlightBorder
-            end
-            local xw, hw = buff:GetSize()
-            local modifier = retailGlow and 2.06 or 1.34
-            highlightBorder:SetSize(xw * modifier, hw * modifier)
-            highlightBorder:SetVertexColor(r, g, b, a)
-            highlightBorder:Show()
-        else
-            if highlightBorder then
-                highlightBorder:Hide()
-            end
-        end
-
-        if not buff.posChanged and DeBuffFilter.db.profile.enableMovingDuration then
-            buff.posChanged = true
-            hooksecurefunc(buff.duration, "SetFormattedText", durationPos)
-        end
-    end
-end
-
-local function New_DebuffButton_UpdateAnchors(buttonName, index)
-    local numBuffs = BUFF_ACTUAL_DISPLAY + BuffFrame.numEnchants;
-    if BuffFrame.numConsolidated and (BuffFrame.numConsolidated > 0) then
-        numBuffs = numBuffs - BuffFrame.numConsolidated + 1;
-    end
-
-    local BUFFS_PER_ROW = DeBuffFilter.db.profile.buffFrameBuffsPerRow
-    local processedSpellIDs = {}
-    local rows = ceil(numBuffs / BUFFS_PER_ROW);
-    local offsetY, previousBuff
-    local numDebuffs = 0
-
-    -- Position debuffs
-    for i = 1, DEBUFF_MAX_DISPLAY do
-        local buff = _G[buttonName .. i];
-        if not buff then
-            return
-        end
-        local auraData = C_UnitAuras.GetAuraDataByIndex("player", i, "HARMFUL")
-        if not auraData or not auraData.name then
-            return
-        end
-
-        local filters = DeBuffFilter:GetSmartFilterSettings(auraData.name, auraData.spellId, "BuffFrame")
-        local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(auraData.spellId, auraData.name, auraData.expirationTime, auraData.applications, "BuffFrame")
-        if not frameSettings then
-            frameSettings = {}
-        end
-        local shouldBeLarge = auraData.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(auraData.sourceUnit)
-        local shouldHide, buffSize, shouldGlow, colorTable = false, 30, false, { r = 1, g = 1, b = 0.85, a = 1 }
-        local removeDuplicates, ownOnly = false, false
-
-        if action then
-            for _, action in ipairs(action) do
-                if action.hide then
-                    shouldHide = true
-                end
-                if action.glow then
-                    shouldGlow = true
-                end
-                if action.size and action.size.enabled then
-                    if shouldBeLarge then
-                        buffSize = action.selfSize or action.otherSize or 21
-                    else
-                        buffSize = action.otherSize or action.selfSize or 19
-                    end
-                end
-            end
-        end
-
-        if frameSettings then
-            if frameSettings.removeDuplicates then removeDuplicates = true end
-            if frameSettings.ownOnly then ownOnly = true end
-            if frameSettings.alwaysEnableGlow then shouldGlow = true end
-            if frameSettings.color then colorTable = frameSettings.color end
-        end
-
-        if shouldHide or (ownOnly and auraData.source ~= "player") or removeDuplicates then
-            buff:ClearAllPoints()
-            buff:SetPoint("TOPRIGHT", ConsolidatedBuffs, "TOPLEFT", 0, 10000);
-        else
-            if removeDuplicates then
-                processedSpellIDs[auraData.spellId] = true
-            end
-
-            buff:SetSize(buffSize, buffSize)
-
-            if filters then
-                for _, settings in ipairs(filters) do
-                    if settings.enableDurationFilter then
-                        local timeLeft = auraData.expirationTime and (auraData.expirationTime - GetTime()) or 0
-                        local duration = auraData.duration or timeLeft
-                        DeBuffFilter:TrackAuraDuration(_G["BuffFrame"], auraData.spellId, auraData.expirationTime, duration, settings)
-                        break
+                        seenSpells[spellId] = true
                     end
                 end
             end
 
-            buff:ClearAllPoints()
-            numDebuffs = numDebuffs + 1
-            local index = numDebuffs
-            if ((index > 1) and (mod(index, BUFFS_PER_ROW) == 1)) then
-                -- New row
-                buff:SetPoint("TOP", _G[buttonName .. (index - BUFFS_PER_ROW)], "BOTTOM", 0, -BUFF_ROW_SPACING);
-            elseif (index == 1) then
-                if (rows < 2) then
-                    offsetY = 1 * ((2 * BUFF_ROW_SPACING) + BUFF_BUTTON_HEIGHT);
-                else
-                    offsetY = rows * (BUFF_ROW_SPACING + BUFF_BUTTON_HEIGHT);
+            if shouldHide then
+                auraFrame:Hide()
+                if auraFrame.DeBuffFilterGlow then
+                    auraFrame.DeBuffFilterGlow:Hide()
                 end
-                buff:SetPoint("TOPRIGHT", BuffFrame, "BOTTOMRIGHT", 0, -offsetY);
             else
-                buff:SetPoint("RIGHT", previousBuff, "LEFT", -5, 0);
-            end
-            previousBuff = buff
-        end
-
-        local highlightBorder = buff.highlightBorder
-        local border = _G[buff:GetName().."Border"]
-
-        if shouldGlow then
-            local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
-            local retailGlow = DeBuffFilter.db.profile.enableRetailGlow
-
-            if not highlightBorder then
-                highlightBorder = buff:CreateTexture(nil, "OVERLAY", nil, 7)
-                if retailGlow then
-                    highlightBorder:SetTexture("Interface\\AddOns\\DeBuffFilter\\newexp")
-                    highlightBorder:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
-                    highlightBorder:SetDesaturated(true)
-                else
-                    highlightBorder:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Stealable")
+                if currentSize then
+                    auraFrame:SetSize(currentSize, currentSize)
+                    auraFrame.Icon:SetSize(currentSize, currentSize)
                 end
-                highlightBorder:SetPoint("CENTER", 0, 0)
-                highlightBorder:SetBlendMode("ADD")
-                buff.highlightBorder = highlightBorder
-            end
 
-            local xw, hw = buff:GetSize()
-            local modifier = retailGlow and 2.06 or 1.34
-            highlightBorder:SetSize(xw * modifier, hw * modifier)
-            highlightBorder:SetVertexColor(r, g, b, a)
-            highlightBorder:Show()
-            if border then
-                border:Hide()
-            end
-        else
-            if highlightBorder then
-                highlightBorder:Hide()
-            end
-            if border then
-                border:Show()
+                if shouldGlow then
+                    if not auraFrame.DeBuffFilterGlow then
+                        auraFrame.DeBuffFilterGlow = auraFrame:CreateTexture(nil, "OVERLAY", nil, 7)
+                        if DeBuffFilter.db.profile.enableRetailGlow then
+                            if C_Texture.GetAtlasInfo("newplayertutorial-drag-slotblue") then
+                                auraFrame.DeBuffFilterGlow:SetAtlas("newplayertutorial-drag-slotblue")
+                            end
+                            auraFrame.DeBuffFilterGlow:SetDesaturated(true)
+                        else
+                            auraFrame.DeBuffFilterGlow:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Stealable")
+                        end
+                        auraFrame.DeBuffFilterGlow:SetPoint("CENTER", auraFrame.Icon, 0, 0)
+                        auraFrame.DeBuffFilterGlow:SetBlendMode("ADD")
+                    end
+
+                    local mod = (DeBuffFilter.db.profile.enableRetailGlow and 2.06 or 1.34)
+                    if currentSize then
+                        auraFrame.DeBuffFilterGlow:SetSize(currentSize * mod, currentSize * mod)
+                    else
+                        local w, h = auraFrame.Icon:GetSize()
+                        auraFrame.DeBuffFilterGlow:SetSize(w * mod, h * mod)
+                    end
+                    auraFrame.DeBuffFilterGlow:SetVertexColor(colorTable.r, colorTable.g, colorTable.b, colorTable.a)
+                    auraFrame.DeBuffFilterGlow:Show()
+
+                    if auraFrame.DebuffBorder and isDebuff then
+                        auraFrame.DebuffBorder:Hide()
+                    end
+
+                    local point, relativeTo, relativePoint, xOfs, yOfs = auraFrame.Duration:GetPoint()
+                    local yOffset, xOffset
+                    if not self.AuraContainer.isHorizontal then
+                        yOffset = yOfs
+                        xOffset = self.AuraContainer.addIconsToRight and 6 or -6
+                    else
+                        yOffset = self.AuraContainer.addIconsToTop and 4 or -4
+                        xOffset = xOfs
+                    end
+                    auraFrame.Duration:ClearAllPoints();
+                    auraFrame.Duration:SetPoint(point, relativeTo, relativePoint, xOffset, yOffset)
+                else
+                    if auraFrame.DeBuffFilterGlow then
+                        auraFrame.DeBuffFilterGlow:Hide()
+                    end
+                    if auraFrame.DebuffBorder and isDebuff then
+                        auraFrame.DebuffBorder:Show()
+                    end
+                end
+
+                tinsert(framesToLayout, auraFrame)
             end
         end
+    end
 
-        if not buff.posChanged and DeBuffFilter.db.profile.enableMovingDuration then
-            buff.posChanged = true
-            hooksecurefunc(buff.duration, "SetFormattedText", durationPos)
-        end
+    if self.AuraContainer.currentGridLayoutInfo then
+        GridLayoutUtil.ApplyGridLayout(
+                framesToLayout,
+                self.AuraContainer.currentGridLayoutInfo.anchor,
+                self.AuraContainer.currentGridLayoutInfo.layout
+        )
     end
 end
 
-hooksecurefunc("BuffFrame_UpdateAllBuffAnchors", New_BuffFrame_UpdateAllBuffAnchors)
-hooksecurefunc("DebuffButton_UpdateAnchors", New_DebuffButton_UpdateAnchors);
+hooksecurefunc(BuffFrame, "UpdateAuraButtons", DBFrame)
+hooksecurefunc(DebuffFrame, "UpdateAuraButtons", DBFrame)

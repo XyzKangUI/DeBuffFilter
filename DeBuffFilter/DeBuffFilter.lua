@@ -3,8 +3,8 @@ local AddonName, DBF = ...
 local DeBuffFilter = LibStub:GetLibrary(AddonName, true)
 local MAX_TARGET_DEBUFFS = 16
 local MAX_TARGET_BUFFS = 40
-local AURA_START_Y = 32
-local AURA_START_X = 5
+local AURA_START_Y = 28
+local AURA_START_X = 21
 local fontName
 local mabs, pairs, mfloor = math.abs, pairs, math.floor
 local tinsert, tsort = table.insert, table.sort
@@ -13,53 +13,71 @@ local UnitIsUnit, UnitIsOwnerOrControllerOfUnit, UnitIsFriend = _G.UnitIsUnit, _
 local IsAddOnLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local playerClass = select(2, UnitClass("player"))
-local isClassic = WOW_PROJECT_ID == WOW_PROJECT_CLASSIC
 local LibClassicDurations
 DeBuffFilter._trackedAuras = DeBuffFilter._trackedAuras or {}
 DeBuffFilter._auraState = DeBuffFilter._auraState or {}
 
 local function adjustCastbar(frame)
     local parentFrame = frame:GetParent()
-    local yOffset, xOffset = parentFrame.largestAura or 0
-    local spellbarAnchor = parentFrame.spellbarAnchor
+    if not parentFrame then return end
 
+    local addXOffset = frame.xOffset or 0
+    local yOffset = parentFrame.largestAura or 0
     local db = DeBuffFilter.db.profile
-
-    local barPosX = parentFrame == TargetFrame and db.targetBarPosX or parentFrame == FocusFrame and db.focusBarPosX
-    local barPosY = parentFrame == TargetFrame and db.targetBarPosY or parentFrame == FocusFrame and db.focusBarPosY
-
-    if (barPosX and barPosX ~= 0) or (barPosY and barPosY ~= 0) then
-        spellbarAnchor = parentFrame
-    end
-
-    local function safeSet(frame, anchor, x, y)
-        local curr = { frame:GetPoint() }
-        if not (curr[2] == anchor and curr[4] == x and curr[5] == y) then
-            frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", x, y)
-        end
-    end
+    local barPosX = (parentFrame == TargetFrame and db.targetBarPosX) or (parentFrame == FocusFrame and db.focusBarPosX)
+    local barPosY = (parentFrame == TargetFrame and db.targetBarPosY) or (parentFrame == FocusFrame and db.focusBarPosY)
+    local hasCustomX = (barPosX and barPosX ~= 0)
+    local hasCustomY = (barPosY and barPosY ~= 0)
+    local isCustom = hasCustomX or hasCustomY
+    local anchorFrame = parentFrame
+    local defaultX = 43 + addXOffset
+    local defaultY = 0
 
     if frame.boss then
-        safeSet(frame, parentFrame, barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or 10 - yOffset)
+        defaultY = 6 - yOffset
     elseif parentFrame.haveToT then
-        if parentFrame.buffsOnTop or parentFrame.auraRows <= 1 then
-            safeSet(frame, parentFrame, barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or -25)
+        if parentFrame.buffsOnTop or (parentFrame.auraRows or 0) <= 1 then
+            defaultY = -25
         else
-            safeSet(frame, spellbarAnchor, barPosX ~= 0 and barPosX or 20, barPosY ~= 0 and barPosY or -15 - yOffset)
+            anchorFrame = parentFrame.spellbarAnchor
+            defaultX = 22 + addXOffset
+            defaultY = -15 - yOffset
         end
     elseif parentFrame.haveElite then
-        if parentFrame.buffsOnTop or parentFrame.auraRows <= 1 then
-            safeSet(frame, parentFrame, barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or -5)
+        if parentFrame.buffsOnTop or (parentFrame.auraRows or 0) <= 1 then
+            defaultY = -9
         else
-            safeSet(frame, spellbarAnchor, barPosX ~= 0 and barPosX or 20, barPosY ~= 0 and barPosY or -15 - yOffset)
+            anchorFrame = parentFrame.spellbarAnchor
+            defaultX = 22 + addXOffset
+            defaultY = -15 - yOffset
         end
     else
-        if not parentFrame.buffsOnTop and parentFrame.auraRows > 0 then
-            safeSet(frame, spellbarAnchor, barPosX ~= 0 and barPosX or 20, barPosY ~= 0 and barPosY or -15 - yOffset)
+        if not parentFrame.buffsOnTop and (parentFrame.auraRows or 0) > 0 then
+            anchorFrame = parentFrame.spellbarAnchor
+            defaultX = 22 + addXOffset
+            defaultY = -15 - yOffset
         else
-            safeSet(frame, parentFrame, barPosX ~= 0 and barPosX or 25, barPosY ~= 0 and barPosY or 7 - yOffset)
+            defaultY = 7 - yOffset
         end
+    end
+
+    if isCustom then
+        anchorFrame = parentFrame
+    end
+
+    local finalX = hasCustomX and barPosX or defaultX
+    local finalY = hasCustomY and barPosY or defaultY
+
+    local curPoint, curRelTo, curRelPoint, curX, curY = frame:GetPoint()
+
+    if curRelTo ~= anchorFrame
+            or curPoint ~= "TOPLEFT"
+            or curRelPoint ~= "BOTTOMLEFT"
+            or mabs(curX - finalX) > 0.01
+            or mabs(curY - finalY) > 0.01 then
+
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", finalX, finalY)
     end
 end
 
@@ -70,13 +88,17 @@ local PLAYER_UNITS = {
 }
 
 function DeBuffFilter:ShouldAuraBeLarge(caster)
+    if (not GetCVarBool("showDynamicBuffSize")) then
+        return true;
+    end
+
     if not caster then
-        return false
+        return false;
     end
 
     for token, value in pairs(PLAYER_UNITS) do
         if UnitIsUnit(caster, token) or UnitIsOwnerOrControllerOfUnit(token, caster) then
-            return value
+            return value;
         end
     end
 end
@@ -105,7 +127,7 @@ local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, of
     if mirrorVertically then
         point = "BOTTOM"
         relativePoint = "TOP"
-        startY = -15
+        startY = -19
         if self.threatNumericIndicator:IsShown() then
             startY = startY + self.threatNumericIndicator:GetHeight()
         end
@@ -151,7 +173,7 @@ local function UpdateDebuffAnchor(self, debuffName, numBuffs, anchorDebuff, size
     if mirrorVertically then
         point = "BOTTOM"
         relativePoint = "TOP"
-        startY = -15
+        startY = -19
         if self.threatNumericIndicator:IsShown() then
             startY = startY + self.threatNumericIndicator:GetHeight()
         end
@@ -209,26 +231,31 @@ end
 
 local function combinedSort(a, b)
     local db = DeBuffFilter.db.profile
-    if db.sortbyDispellable then
-        if playerClass == "ROGUE" and (a.dispelName == "" and b.dispelName ~= "") then
-            return true
-        end
-        if playerClass == "ROGUE" and (a.dispelName ~= "" and b.dispelName == "") then
-            return false
-        end
-        if a.dispelName == "Magic" and b.dispelName ~= "Magic" then
-            return true
-        end
-        if a.dispelName ~= "Magic" and b.dispelName == "Magic" then
-            return false
+
+    if db.sortbyDispellable and playerClass == "ROGUE" then
+        local aHasType = a.dispelName and a.dispelName ~= ""
+        local bHasType = b.dispelName and b.dispelName ~= ""
+
+        if aHasType ~= bHasType then
+            return aHasType
         end
     end
-    if db.sortBySize and a.size ~= b.size then
-        return a.size > b.size
+
+    if db.sortbyDispellable then
+        local aMagic = a.dispelName == "Magic"
+        local bMagic = b.dispelName == "Magic"
+
+        if aMagic ~= bMagic then
+            return aMagic
+        end
     end
 
     if a.prio ~= b.prio then
         return a.prio > b.prio
+    end
+
+    if a.size ~= b.size then
+        return a.size > b.size
     end
 
     return a.index < b.index
@@ -238,23 +265,32 @@ function DeBuffFilter:TrackAuraDuration(frame, spellId, expirationTime, duration
     if not expirationTime or not duration then
         return
     end
-
-    self._trackedAuras = self._trackedAuras or {}
-    self._auraState = self._auraState or {}
+    local unit = frame.unit or "player"
+    local guid = UnitGUID(unit)
+    if not guid then
+        return
+    end
 
     self._trackedAuras[frame] = self._trackedAuras[frame] or {}
-    self._auraState[frame] = self._auraState[frame] or {}
+    self._trackedAuras[frame][guid] = self._trackedAuras[frame][guid] or {}
 
-    self._trackedAuras[frame][spellId] = {
+    self._auraState[frame] = self._auraState[frame] or {}
+    self._auraState[frame][guid] = self._auraState[frame][guid] or {}
+
+    self._trackedAuras[frame][guid][spellId] = {
         expiration = expirationTime,
         min = settings.minDuration or 0,
         max = settings.maxDuration or 0,
     }
 
-    self._auraState[frame][spellId] = self._auraState[frame][spellId] or { entered = false, exited = false }
+    self._auraState[frame][guid][spellId] = self._auraState[frame][guid][spellId] or {
+        entered = false,
+        exited = false,
+        expiration = expirationTime,
+    }
 end
 
-local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateFunc, offsetX, mirrorAurasVertically, shouldSort)
+local function updateLayout(frame, auraNamePrefix, numAuras, numOppositeAuras, updateFunc, offsetX, mirrorAurasVertically, shouldSort)
     local db = DeBuffFilter.db.profile
     local LARGE_AURA_SIZE = db.selfSize
     local SMALL_AURA_SIZE = db.otherSize
@@ -262,40 +298,34 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
     local yDistance = db.verticalSpace
     local frameName = frame.unit == "target" and "TargetFrame" or frame.unit == "focus" and "FocusFrame"
     local filter = (updateFunc == UpdateBuffAnchor) and "HELPFUL" or "HARMFUL"
-    local processedSpellIDs = {}
+    local retailGlow = db.enableRetailGlow
+
     local auraList = {}
     local prioSort = false
 
     for i = 1, numAuras do
-        local aura
-        if isClassic then
-            local name, icon, count, dispelType, _, expirationTime, source, _, _, spellID = LibClassicDurations:UnitAura(frame.unit, i, filter)
-            aura = { name = name, icon = icon, spellId = spellID, sourceUnit = source, dispelName = dispelType, expirationTime = expirationTime, applications = count }
-        else
-            aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
-        end
-
-        local dbf = _G[auraName .. i]
-        local isVisible = false
-        local shouldHide, prioValue, removeDuplicates, ownOnly = nil, 0, false, false
-        local buffSize = SMALL_AURA_SIZE
-        local shouldBeLarge = aura and aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
+        local aura = C_UnitAuras.GetAuraDataByIndex(frame.unit, i, filter)
+        local dbf = _G[auraNamePrefix .. i]
 
         if aura and aura.name and aura.icon and dbf then
-            if shouldBeLarge then
-                buffSize = LARGE_AURA_SIZE
-            end
+            local shouldBeLarge = aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
+            local buffSize = shouldBeLarge and LARGE_AURA_SIZE or SMALL_AURA_SIZE
+            local shouldHide, prioValue, removeDuplicates, ownOnly = false, 0, false, false
+            local shouldGlow, colorTable = false, { r = 1, g = 1, b = 0.85, a = 1 }
+
             local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(aura.spellId, aura.name, aura.expirationTime, aura.applications, frameName)
             frameSettings = frameSettings or {}
 
             if action then
-                for _, filter in ipairs(action) do
-                    if filter.hide then
+                for _, act in ipairs(action) do
+                    if act.hide then
                         shouldHide = true
                     end
-                    if filter.size and filter.size.enabled then
-                        buffSize = shouldBeLarge and (filter.selfSize or filter.otherSize or 21)
-                                or (filter.otherSize or filter.selfSize or 19)
+                    if act.glow then
+                        shouldGlow = true
+                    end
+                    if act.size and act.size.enabled then
+                        buffSize = shouldBeLarge and (act.selfSize or act.otherSize or 21) or (act.otherSize or act.selfSize or 19)
                     end
                 end
             end
@@ -306,6 +336,12 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 end
                 if frameSettings.ownOnly then
                     ownOnly = true
+                end
+                if frameSettings.alwaysEnableGlow then
+                    shouldGlow = true
+                end
+                if frameSettings.color then
+                    colorTable = frameSettings.color
                 end
                 if frameSettings.priorityEnabled and frameSettings.priority and frameSettings.priority > 0 then
                     prioValue = frameSettings.priority
@@ -325,11 +361,61 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 end
             end
 
-            isVisible = not shouldHide and (not ownOnly or (aura.sourceUnit == "player")) and
-                    not (removeDuplicates and processedSpellIDs[aura.spellId])
+            local isVisible = not shouldHide and (not ownOnly or (aura.sourceUnit == "player"))
 
-            if isVisible and removeDuplicates then
-                processedSpellIDs[aura.spellId] = true
+            if isVisible then
+                local selfName = dbf:GetName()
+                local frameStealable = _G[selfName .. "Stealable"]
+                local frameBorder = _G[selfName .. "Border"]
+                local isDebuff = (filter == "HARMFUL")
+
+                if shouldGlow or (not isDebuff and db.highlightAll and aura.dispelName == "Magic") then
+                    if not frameStealable and isDebuff then
+                        frameStealable = dbf:CreateTexture(selfName .. "Stealable", "OVERLAY")
+                        frameStealable:SetPoint("CENTER", 0, 0)
+                        frameStealable:SetBlendMode("ADD")
+                    end
+
+                    if frameStealable then
+                        local mod = retailGlow and 2.06 or 1.34
+                        frameStealable:Show()
+                        frameStealable:SetSize(buffSize * mod, buffSize * mod)
+                        frameStealable:SetVertexColor(colorTable.r, colorTable.g, colorTable.b, colorTable.a)
+
+                        if retailGlow then
+                            if not frameStealable.newTexture then
+                                frameStealable.newTexture = true
+                                if C_Texture.GetAtlasInfo("newplayertutorial-drag-slotblue") then
+                                    frameStealable:SetAtlas("newplayertutorial-drag-slotblue")
+                                else
+                                    frameStealable:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Stealable")
+                                end
+                                frameStealable:SetDesaturated(true)
+                            end
+                        end
+                        if isDebuff and frameBorder then
+                            frameBorder:Hide()
+                        end
+                    end
+                else
+                    if frameStealable then
+                        frameStealable:Hide()
+                    end
+                    if isDebuff and frameBorder then
+                        frameBorder:Show()
+                    end
+                end
+
+                local frameCount = _G[selfName .. "Count"]
+                if frameCount then
+                    if not fontName then
+                        fontName = frameCount:GetFont()
+                    end
+                    local countSize = db.enableFancyCount and db.countSize or (buffSize / 1.75)
+                    frameCount:SetFont(fontName, countSize, "OUTLINE, THICKOUTLINE, MONOCHROME")
+                    local c = db.countColor or { 1, 1, 1 }
+                    frameCount:SetVertexColor(c[1], c[2], c[3])
+                end
             end
 
             tinsert(auraList, {
@@ -339,16 +425,29 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 prio = prioValue,
                 dispelName = aura.dispelName,
                 index = i,
-                isVisible = isVisible
+                isVisible = isVisible,
+                largeAura = shouldBeLarge,
+                removeDuplicates = removeDuplicates
             })
         elseif dbf then
+            dbf:Hide()
             dbf:ClearAllPoints()
-            dbf:SetPoint("CENTER", frame, "CENTER", 100000, 100000)
         end
     end
 
     if shouldSort or prioSort then
         tsort(auraList, combinedSort)
+    end
+
+    local seen = {}
+    for _, data in ipairs(auraList) do
+        if data.isVisible and data.removeDuplicates then
+            if seen[data.aura.spellId] then
+                data.isVisible = false
+            else
+                seen[data.aura.spellId] = true
+            end
+        end
     end
 
     local rowWidth, anchorRowAura, lastBuff = 0, nil, nil
@@ -358,9 +457,9 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
     local currentX, currentY
 
     for _, data in ipairs(auraList) do
-        local aura, dbf, size = data.aura, data.dbf, data.size
+        local dbf, size = data.dbf, data.size
         if data.isVisible then
-            local shouldBeLarge = aura.sourceUnit and DeBuffFilter:ShouldAuraBeLarge(aura.sourceUnit)
+            local shouldBeLarge = data.largeAura
             if shouldBeLarge then
                 offsetY = yDistance * 2
             end
@@ -376,13 +475,18 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 rowWidth = rowWidth + size + offsetX
             end
 
-            local verticalDistance = currentY and (currentY - totFrameBottom) or 0
-            local horizontalDistance = rowWidth
-            if currentX then
-                horizontalDistance = mfloor(mabs((currentX + size + offsetX) - totFrameX)) + 5
+            local breakRow = false
+            if haveToT and currentX and totFrameX then
+                local rightEdge = currentX + size + offsetX
+                if rightEdge > totFrameX and (currentY and currentY > totFrameBottom) then
+                    breakRow = true
+                end
+            end
+            if rowWidth > maxRowWidth then
+                breakRow = true
             end
 
-            if (haveToT and (horizontalDistance < size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
+            if breakRow then
                 if biggestAura and anchorRowAura and biggestAura >= mfloor(anchorRowAura:GetSize() + 0.5) then
                     offsetY = (yDistance * 2) + (biggestAura - anchorRowAura:GetSize())
                 end
@@ -397,6 +501,7 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 updateFunc(frame, dbf, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically)
             end
 
+            dbf:Show()
             lastBuff = dbf
             currentX, currentY = dbf:GetLeft(), dbf:GetTop()
             if not biggestAura or biggestAura < size then
@@ -407,305 +512,55 @@ local function updateLayout(frame, auraName, numAuras, numOppositeAuras, updateF
                 frame.largestAura = calc
             end
         elseif dbf then
+            dbf:Hide()
             dbf:ClearAllPoints()
-            dbf:SetPoint("CENTER", frame, "CENTER", 100000, 100000)
         end
     end
 end
 
 local function Filterino(self)
-    if self and (not (self == TargetFrame or self == FocusFrame) or self:IsForbidden()) then
-        return
-    end
-
-    local frame, frameName
-    local frameIcon, frameCount, frameCooldown
     local selfName = self:GetName()
-    local numDebuffs, numBuffs = 0, 0
-    local playerIsTarget = UnitIsUnit("player", self.unit)
     local isEnemy = UnitIsEnemy("player", self.unit)
-    local buffDetect = isClassic and LibClassicDurations.UnitAuraWithBuffs or UnitBuff
-    local db = DeBuffFilter.db.profile
-    local retailGlow = db.enableRetailGlow
-    local texturePath = "Interface\\TargetingFrame\\UI-TargetingFrame-Stealable"
-
-    for i = 1, MAX_TARGET_BUFFS do
-        local buffName, icon, count, debuffType, duration, expirationTime, caster, canStealOrPurge, _, spellId = buffDetect(self.unit, i, "HELPFUL")
-        if buffName and icon then
-            frameName = selfName .. "Buff" .. i
-            frame = _G[frameName]
-            local frameStealable = _G[frameName .. "Stealable"]
-            local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(spellId, buffName, expirationTime, count, selfName)
-            if not frameSettings then
-                frameSettings = {}
-            end
-            local shouldBeLarge = caster and DeBuffFilter:ShouldAuraBeLarge(caster)
-            local buffSize = shouldBeLarge and db.selfSize or db.otherSize
-            local shouldHide, shouldGlow, colorTable = nil, nil, { r = 1, g = 1, b = 0.85, a = 1 }
-
-            if action then
-                for _, action in ipairs(action) do
-                    if action.hide then
-                        shouldHide = true
-                    end
-                    if action.glow then
-                        shouldGlow = true
-                    end
-                    if action.size and action.size.enabled then
-                        if shouldBeLarge then
-                            buffSize = action.selfSize or action.otherSize or 21
-                        else
-                            buffSize = action.otherSize or action.selfSize or 19
-                        end
-                    end
-                end
-            end
-
-            if frameSettings then
-                if frameSettings.alwaysEnableGlow then
-                    shouldGlow = true
-                end
-                if frameSettings.color then
-                    colorTable = frameSettings.color
-                end
-            end
-
-            local modifier = 1.34
-            local stockR, stockG, stockB = 1, 1, 1
-
-            if isClassic and not frame then
-                frame = CreateFrame("Button", frameName, self, "TargetBuffFrameTemplate")
-                frame.unit = self.unit
-            end
-
-            if frame then
-                if icon and (not self.maxBuffs or i <= self.maxBuffs) then
-                    if isClassic then
-                        frame:SetID(i)
-                        frameIcon = _G[frameName .. "Icon"]
-                        frameIcon:SetTexture(icon)
-                        frameCount = _G[frameName .. "Count"]
-                        if count and count > 1 and self.showAuraCount then
-                            frameCount:SetText(count)
-                            frameCount:Show()
-                        else
-                            frameCount:Hide()
-                        end
-                        frameCooldown = _G[frameName .. "Cooldown"]
-                        CooldownFrame_Set(frameCooldown, expirationTime - duration, duration, duration > 0, true)
-
-                        if isEnemy and UnitBuff(frame.unit, i, "HELPFUL") == nil then
-                            frame:SetScript("OnEnter", function(self)
-                                GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT", 15, -25)
-                                GameTooltip:SetSpellByID(spellId)
-                                GameTooltip:Show()
-                            end)
-
-                            frame:SetScript("OnLeave", function(self)
-                                GameTooltip:Hide()
-                            end)
-                        end
-                    end
-
-                    if retailGlow then
-                        modifier = 2.06
-                        stockR, stockG, stockB = 1, 1, 0.75
-                        texturePath = "Interface\\AddOns\\DeBuffFilter\\newexp"
-                    end
-
-                    if frameStealable then
-                        if icon and (db.highlightAll and debuffType == "Magic") or shouldGlow then
-                            local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
-                            frameStealable:Show()
-                            frameStealable:SetHeight(buffSize * modifier)
-                            frameStealable:SetWidth(buffSize * modifier)
-                            frameStealable:SetVertexColor(r, g, b, a)
-                            if retailGlow and not frameStealable.newTexture then
-                                frameStealable.newTexture = true
-                                frameStealable:SetTexture(texturePath)
-                                frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
-                                frameStealable:SetDesaturated(true)
-                            end
-                        elseif not playerIsTarget and isEnemy and canStealOrPurge then
-                            frameStealable:Show()
-                            frameStealable:SetHeight(buffSize * modifier)
-                            frameStealable:SetWidth(buffSize * modifier)
-                            frameStealable:SetVertexColor(stockR, stockG, stockB)
-                            if retailGlow and not frameStealable.newTexture then
-                                frameStealable.newTexture = true
-                                frameStealable:SetTexture(texturePath)
-                                frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
-                                frameStealable:SetDesaturated(true)
-                            end
-                        else
-                            frameStealable:Hide()
-                        end
-                    end
-
-                    local frameCount = _G[frameName .. "Count"]
-                    if frameCount then
-                        if not fontName then
-                            fontName = frameCount:GetFont()
-                        end
-                        local countSize = db.enableFancyCount and db.countSize or (buffSize / 1.75)
-                        frameCount:SetFont(fontName, countSize, "OUTLINE, THICKOUTLINE, MONOCHROME")
-                        local color = db.countColor or { 1, 1, 1 }
-                        frameCount:SetVertexColor(color[1], color[2], color[3])
-                    end
-
-                    numBuffs = numBuffs + 1
-                    frame:ClearAllPoints()
-                    frame:Show()
-                else
-                    frame:Hide()
-                end
-            end
-        else
-            break
-        end
-    end
-
-    local frameNum, index = 1, 1
-    local maxDebuffs = self.maxDebuffs or MAX_TARGET_DEBUFFS
-
-    while frameNum <= maxDebuffs and index <= maxDebuffs do
-        local debuffName, icon, count, debuffType, duration, expirationTime, caster, _, _, spellId, _, _, casterIsPlayer, nameplateShowAll = UnitDebuff(self.unit, index, "INCLUDE_NAME_PLATE_ONLY")
-        if debuffName then
-            if icon and TargetFrame_ShouldShowDebuffs(self.unit, caster, nameplateShowAll, casterIsPlayer) then
-                frameName = selfName .. "Debuff" .. frameNum
-                frame = _G[frameName]
-                local debuffBorder = _G[frameName .. "Border"]
-                local action, frameSettings = DeBuffFilter:CheckSmarterAuraFilters(spellId, debuffName, expirationTime, count, selfName)
-                if not frameSettings then
-                    frameSettings = {}
-                end
-                local shouldBeLarge = caster and DeBuffFilter:ShouldAuraBeLarge(caster)
-                local modifier = 1.34
-                local buffSize = shouldBeLarge and db.selfSize or db.otherSize
-                local shouldHide, shouldGlow, colorTable = nil, nil, { r = 1, g = 1, b = 0.85, a = 1 }
-
-                if action then
-                    for _, action in ipairs(action) do
-                        if action.hide then
-                            shouldHide = true
-                        end
-                        if action.glow then
-                            shouldGlow = true
-                        end
-                        if action.size and action.size.enabled then
-                            if shouldBeLarge then
-                                buffSize = action.selfSize or action.otherSize or 21
-                            else
-                                buffSize = action.otherSize or action.selfSize or 19
-                            end
-                        end
-                    end
-                end
-
-                if action then
-                    for _, action in ipairs(action) do
-                        if action.hide then
-                            shouldHide = true
-                        end
-                        if action.glow then
-                            shouldGlow = true
-                        end
-                        if action.size and action.size.enabled then
-                            buffSize = shouldBeLarge and action.selfSize or action.otherSize
-                        end
-                    end
-                end
-
-                if frameSettings then
-                    if frameSettings.alwaysEnableGlow then
-                        shouldGlow = true
-                    end
-                    if frameSettings.color then
-                        colorTable = frameSettings.color
-                    end
-                end
-
-                if retailGlow then
-                    modifier = 2.06
-                    texturePath = "Interface\\AddOns\\DeBuffFilter\\newexp"
-                end
-
-                local frameStealable = _G[frameName .. "Stealable"]
-
-                if shouldGlow then
-                    if not frameStealable and frame and colorTable then
-                        frameStealable = frame:CreateTexture(frameName .. "Stealable", "OVERLAY")
-                        frameStealable:SetTexture(texturePath)
-                        if retailGlow then
-                            frameStealable:SetTexCoord(0.338379, 0.412598, 0.680664, 0.829102)
-                        end
-                        frameStealable:SetPoint("CENTER", 0, 0)
-                        frameStealable:SetBlendMode("ADD")
-                    end
-
-                    if frameStealable then
-                        local r, g, b, a = colorTable.r, colorTable.g, colorTable.b, colorTable.a
-                        frameStealable:Show()
-                        frameStealable:SetHeight(buffSize * modifier)
-                        frameStealable:SetWidth(buffSize * modifier)
-                        frameStealable:SetVertexColor(r, g, b, a)
-
-                        if debuffBorder then
-                            debuffBorder:SetShown(r == 0 and g == 0 and b == 0 or a == 0)
-                        end
-
-                        if retailGlow then
-                            frameStealable:SetDesaturated(true)
-                        end
-                    end
-                else
-                    if frameStealable then
-                        frameStealable:Hide()
-                    end
-                    if debuffBorder then
-                        debuffBorder:Show()
-                    end
-                end
-
-                local frameCount = _G[frameName .. "Count"]
-                if frameCount then
-                    if not fontName then
-                        fontName = frameCount:GetFont()
-                    end
-                    frameCount:SetFont(fontName, buffSize / 1.75, "OUTLINE, THICKOUTLINE, MONOCHROME")
-
-                    local color = db.countColor or { 1, 1, 1 }
-                    frameCount:SetVertexColor(color[1], color[2], color[3])
-                end
-
-                numDebuffs = numDebuffs + 1
-                frameNum = frameNum + 1
-            end
-        else
-            break
-        end
-        index = index + 1
-    end
-
-    local mirrorAurasVertically = self.buffsOnTop and true or false
     local db = DeBuffFilter.db.profile
     local offsetX = db.horizontalSpace
+    local mirrorAurasVertically = self.buffsOnTop and true or false
+    local sortOrDefault = (db.sortBySize or db.sortbyDispellable)
+
+    if not self.buffz then
+        self.buffz = CreateFrame("Frame", "$parentBuffz", self);
+        self.buffz:SetSize(10, 10)
+    end
+    if not self.debuffz then
+        self.debuffz = CreateFrame("Frame", "$parentDebuffz", self);
+        self.debuffz:SetSize(10, 10)
+    end
+
+    local numBuffs = 0
+    AuraUtil.ForEachAura(self.unit, AuraUtil.CreateFilterString(AuraUtil.AuraFilters.Helpful), MAX_TARGET_BUFFS, function(...)
+        numBuffs = numBuffs + 1
+    end)
+
+    for i = numBuffs + 1, MAX_TARGET_BUFFS do
+        local f = _G[selfName .. "Buff" .. i]
+        if f then
+            f:Hide()
+        end
+    end
+
+    local numDebuffs = 0
+    AuraUtil.ForEachAura(self.unit, AuraUtil.CreateFilterString(AuraUtil.AuraFilters.Harmful, AuraUtil.AuraFilters.IncludeNameplateOnly), MAX_TARGET_DEBUFFS, function(...)
+        numDebuffs = numDebuffs + 1
+    end)
+    for i = numDebuffs + 1, MAX_TARGET_DEBUFFS do
+        local f = _G[selfName .. "Debuff" .. i]
+        if f then
+            f:Hide()
+        end
+    end
 
     self.auraRows = 0
     self.largestAura = 0
     self.spellbarAnchor = nil
-
-    if not self.buffz then
-        self.buffz = CreateFrame("Frame", "$parentBuffz", self)
-        self.buffz:SetSize(10, 10)
-    end
-
-    if not self.debuffz then
-        self.debuffz = CreateFrame("Frame", "$parentDebuffz", self)
-        self.debuffz:SetSize(10, 10)
-    end
-
-    local sortOrDefault = (db.sortBySize or db.sortbyDispellable)
 
     if isEnemy then
         updateLayout(self, selfName .. "Debuff", numDebuffs, numBuffs, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, sortOrDefault)
@@ -725,15 +580,10 @@ DeBuffFilter.event:RegisterEvent("PLAYER_LOGIN")
 DeBuffFilter.event:SetScript("OnEvent", function(self)
     DeBuffFilter:SetupOptions()
 
-    if isClassic then
-        LibClassicDurations = LibStub("LibClassicDurations", true)
-        LibClassicDurations:RegisterFrame(AddonName)
-        LibClassicDurations.RegisterCallback(DBF, "UNIT_BUFF", function(event, unit)
-            TargetFrame_UpdateAuras(TargetFrame)
-        end)
+    hooksecurefunc(TargetFrame, "UpdateAuras", Filterino)
+    if FocusFrame then
+        hooksecurefunc(FocusFrame, "UpdateAuras", Filterino)
     end
-
-    hooksecurefunc("TargetFrame_UpdateAuras", Filterino)
 
     for _, v in pairs({ TargetFrameSpellBar, FocusFrameSpellBar }) do
         if v then
@@ -755,11 +605,32 @@ DeBuffFilter.event:SetScript("OnEvent", function(self)
     end
 
     if db.disableFade then
-        hooksecurefunc("AuraButton_OnUpdate", function(frame)
-            if frame:GetAlpha() < 1 then
-                frame:SetAlpha(1)
+        for _, aura in ipairs({ BuffFrame.AuraContainer:GetChildren() }) do
+            if aura and aura.SetAlpha then
+                local overflowBuffs
+                hooksecurefunc(aura, "SetAlpha", function(self)
+                    if overflowBuffs then
+                        return
+                    end
+                    overflowBuffs = true
+                    self:SetAlpha(1)
+                    overflowBuffs = false
+                end)
             end
-        end)
+        end
+        for _, aura in ipairs({ DebuffFrame.AuraContainer:GetChildren() }) do
+            if aura and aura.SetAlpha then
+                local overflowDebuffs
+                hooksecurefunc(aura, "SetAlpha", function(self)
+                    if overflowDebuffs then
+                        return
+                    end
+                    overflowDebuffs = true
+                    self:SetAlpha(1)
+                    overflowDebuffs = false
+                end)
+            end
+        end
     end
 
     playerClass = select(2, UnitClass("player"))
@@ -767,6 +638,7 @@ end)
 
 local interval = 0.1
 local lastUpdate = 0
+
 DeBuffFilter.event:SetScript("OnUpdate", function(self, elapsed)
     lastUpdate = lastUpdate + elapsed
     if lastUpdate < interval then
@@ -775,51 +647,93 @@ DeBuffFilter.event:SetScript("OnUpdate", function(self, elapsed)
     lastUpdate = 0
 
     local now = GetTime()
-    local stateTable = DeBuffFilter._auraState or {}
     local tracked = DeBuffFilter._trackedAuras or {}
+    local stateTable = DeBuffFilter._auraState or {}
 
-    for frame, spells in pairs(tracked) do
-        for spellId, data in pairs(spells) do
-            local timeLeft = data.expiration - now
+    for frame, guidTable in pairs(tracked) do
+        local needsUpdate = false
+        local currentGUID = frame.unit and UnitGUID(frame.unit)
 
-            stateTable[frame] = stateTable[frame] or {}
-            local state = stateTable[frame][spellId]
+        if frame == BuffFrame or frame == DebuffFrame then
+            currentGUID = UnitGUID("player")
+        end
 
-            if not state or state.expiration ~= data.expiration then
-                state = {
-                    entered = false,
-                    exited = false,
-                    expiration = data.expiration,
-                }
-                stateTable[frame][spellId] = state
-            end
+        for guid, spells in pairs(guidTable) do
+            if guid ~= currentGUID then
+                guidTable[guid] = nil
+                if stateTable[frame] then
+                    stateTable[frame][guid] = nil
+                end
+            else
+                for spellId, data in pairs(spells) do
+                    local timeLeft = data.expiration - now
+                    stateTable[frame][guid] = stateTable[frame][guid] or {}
+                    local state = stateTable[frame][guid][spellId]
 
-            if not state.entered and timeLeft <= data.max then
-                state.entered = true
-                if frame == TargetFrame or frame == FocusFrame then
-                    TargetFrame_UpdateAuras(frame)
-                elseif frame == BuffFrame then
-                    BuffFrame_Update()
+                    if not state or state.expiration ~= data.expiration then
+                        state = { entered = false, exited = false, expiration = data.expiration }
+                        stateTable[frame][guid][spellId] = state
+                    end
+
+                    if not state.entered and timeLeft <= data.max then
+                        state.entered = true
+                        needsUpdate = true
+                    end
+
+                    if not state.exited and timeLeft <= data.min then
+                        state.exited = true
+                        state.entered = true
+                        needsUpdate = true
+                    end
+
+                    if timeLeft <= 0 then
+                        spells[spellId] = nil
+                        stateTable[frame][guid][spellId] = nil
+                    end
                 end
             end
+        end
 
-            if not state.exited and timeLeft <= data.min then
-                state.exited = true
-                state.entered = true
-                if frame == TargetFrame or frame == FocusFrame then
-                    TargetFrame_UpdateAuras(frame)
-                elseif frame == BuffFrame then
-                    BuffFrame_Update()
+        if needsUpdate then
+            if frame == BuffFrame or frame == DebuffFrame then
+                if frame.UpdateAuraButtons then
+                    frame:UpdateAuraButtons()
                 end
-            end
-
-            if timeLeft <= 0 then
-                spells[spellId] = nil
-                stateTable[frame][spellId] = nil
+            elseif frame == TargetFrame or frame == FocusFrame then
+                frame:UpdateAuras()
             end
         end
     end
-
-    DeBuffFilter._auraState = stateTable
 end)
 
+local function wipetrackcache()
+    if not DeBuffFilter._trackedAuras then
+        return
+    end
+    local tracked = DeBuffFilter._trackedAuras
+    local state = DeBuffFilter._auraState
+
+    for frame, guidTable in pairs(tracked) do
+        local currentGUID
+        if frame == BuffFrame or frame == DebuffFrame then
+            currentGUID = UnitGUID("player")
+        elseif frame and frame.unit then
+            currentGUID = UnitGUID(frame.unit)
+        end
+
+        if not currentGUID then
+            tracked[frame] = nil
+            state[frame] = nil
+        else
+            for guid in pairs(guidTable) do
+                if guid ~= currentGUID then
+                    guidTable[guid] = nil
+                    if state[frame] then
+                        state[frame][guid] = nil
+                    end
+                end
+            end
+        end
+    end
+end
+C_Timer.NewTicker(600, wipetrackcache)

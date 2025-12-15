@@ -25,8 +25,7 @@ local defaults = {
         countSize = 14, sortBySize = false, sortbyDispellable = false, highlightAll = false,
         enableRetailGlow = false, focusBarPosX = 0, focusBarPosY = 0, targetBarPosX = 0, targetBarPosY = 0,
         targetCastBarSize = 1, focusCastBarSize = 1, buffFrameBuffsPerRow = 10, disableFade = false,
-        enableFancyCount = false, countColor = { 1, 1, 1 }, enableMovingDuration = false,
-        buffFrameDurationYPos = -12, buffFrameDurationXPos = 0,
+        enableFancyCount = false, countColor = { 1, 1, 1 }
     }
 }
 
@@ -134,6 +133,7 @@ function DeBuffFilter:BuildSmarterAuraOptions()
         TargetFrame = { type = "group", name = "Target Frame", order = 2, args = {} },
         FocusFrame = { type = "group", name = "Focus Frame", order = 3, args = {} },
         BuffFrame = { type = "group", name = "Buff Frame", order = 4, args = {} },
+        DebuffFrame = { type = "group", name = "Debuff Frame", order = 5, args = {} },
     }
     for aura, frames in pairs(self.db.profile.smartFilters or {}) do
         for frame, filters in pairs(frames or {}) do
@@ -166,9 +166,13 @@ function DeBuffFilter:AddFilterOptions(aura, frame, settings, index)
     settings.settings = settings.settings or { alwaysEnableGlow = false, ownOnly = false, removeDuplicates = false, priorityEnabled = false, priority = 0, color = { r = 1, g = 1, b = 0.85, a = 1 } }
 
     local function updateFrames()
-        if frame == "TargetFrame" then TargetFrame_UpdateAuras(TargetFrame)
-        elseif frame == "FocusFrame" and FocusFrame then TargetFrame_UpdateAuras(FocusFrame)
-        elseif frame == "BuffFrame" then BuffFrame_UpdateAllBuffAnchors() end
+        if frame == "TargetFrame" or frame == "FocusFrame" then
+            if _G[frame] and _G[frame].UpdateAuras then _G[frame]:UpdateAuras() end
+        elseif frame == "BuffFrame" then
+            if BuffFrame and BuffFrame.UpdateAuraButtons then BuffFrame:UpdateAuraButtons() end
+        elseif frame == "DebuffFrame" then
+            if DebuffFrame and DebuffFrame.UpdateAuraButtons then DebuffFrame:UpdateAuraButtons() end
+        end
     end
 
     return {
@@ -194,7 +198,8 @@ function DeBuffFilter:AddFilterOptions(aura, frame, settings, index)
             get = function() return tostring(aura or ""):gsub("new_filter_%d+", "") end,
         },
         frame = {
-            order = 2, type = "select", name = "Apply To Frame", values = { [""] = "All Frames", TargetFrame = "Target Frame", FocusFrame = "Focus Frame", BuffFrame = "Buff Frame" },
+            order = 2, type = "select", name = "Apply To Frame",
+            values = { [""] = "All Frames", TargetFrame = "Target Frame", FocusFrame = "Focus Frame", BuffFrame = "Buff Frame", DebuffFrame = "Debuff Frame" },
             set = function(_, val)
                 if val ~= frame then
                     self.db.profile.smartFilters[aura][val] = self.db.profile.smartFilters[aura][val] or {}
@@ -250,10 +255,10 @@ end
 function DeBuffFilter:RefreshSmarterAuraOptions()
     local smarterAuraArgs = self.options.args.smarterAuraFilters.args
     local newOptions = self:BuildSmarterAuraOptions()
-    smarterAuraArgs.TargetFrame, smarterAuraArgs.FocusFrame, smarterAuraArgs.BuffFrame = nil, nil, nil
+    smarterAuraArgs.TargetFrame, smarterAuraArgs.FocusFrame, smarterAuraArgs.BuffFrame, smarterAuraArgs.DebuffFrame = nil, nil, nil, nil
     wipe(smarterAuraArgs.AllFrames.args)
     for k, v in pairs(newOptions.AllFrames.args) do smarterAuraArgs.AllFrames.args[k] = v end
-    for _, frameName in ipairs({ "TargetFrame", "FocusFrame", "BuffFrame" }) do
+    for _, frameName in ipairs({ "TargetFrame", "FocusFrame", "BuffFrame", "DebuffFrame" }) do
         local frameGroup = newOptions[frameName]
         if frameGroup and next(frameGroup.args) then smarterAuraArgs[frameName] = frameGroup end
     end
@@ -278,11 +283,11 @@ function DeBuffFilter:SetupOptions()
                     fancySliders = {
                         order = 1, type = "group", inline = false, name = "UnitFrame settings",
                         args = {
-                            selfSize = { order = 1, width = 2, name = "My Debuffs/Buffs size", type = "range", min = 17, max = 34, step = 1, get = function() return self.db.profile.selfSize end, set = function(info, val) self.db.profile.selfSize = val; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
-                            otherSize = { order = 2, width = 2, name = "Others Debuffs/Buffs size", type = "range", min = 17, max = 34, step = 1, get = function() return self.db.profile.otherSize end, set = function(info, val) self.db.profile.otherSize = val; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
-                            auraWidth = { order = 3, width = 2, name = "Aura row width", type = "range", min = 108, max = 178, step = 14, get = function() return self.db.profile.auraWidth end, set = function(info, val) self.db.profile.auraWidth = val; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
-                            verticalSpacing = { order = 4, width = 2, name = "Vertical spacing", type = "range", min = 1, max = 50, step = 1, get = function() return self.db.profile.verticalSpace end, set = function(info, val) self.db.profile.verticalSpace = val; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
-                            horizontalSpacing = { order = 5, width = 2, name = "Horizontal spacing", type = "range", min = 3, max = 35, step = 1, get = function() return self.db.profile.horizontalSpace end, set = function(info, val) self.db.profile.horizontalSpace = val; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
+                            selfSize = { order = 1, width = 2, name = "My Debuffs/Buffs size", type = "range", min = 17, max = 34, step = 1, get = function() return self.db.profile.selfSize end, set = function(info, val) self.db.profile.selfSize = val; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
+                            otherSize = { order = 2, width = 2, name = "Others Debuffs/Buffs size", type = "range", min = 17, max = 34, step = 1, get = function() return self.db.profile.otherSize end, set = function(info, val) self.db.profile.otherSize = val; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
+                            auraWidth = { order = 3, width = 2, name = "Aura row width", type = "range", min = 108, max = 178, step = 14, get = function() return self.db.profile.auraWidth end, set = function(info, val) self.db.profile.auraWidth = val; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
+                            verticalSpacing = { order = 4, width = 2, name = "Vertical spacing", type = "range", min = 1, max = 50, step = 1, get = function() return self.db.profile.verticalSpace end, set = function(info, val) self.db.profile.verticalSpace = val; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
+                            horizontalSpacing = { order = 5, width = 2, name = "Horizontal spacing", type = "range", min = 3, max = 35, step = 1, get = function() return self.db.profile.horizontalSpace end, set = function(info, val) self.db.profile.horizontalSpace = val; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
                         },
                     },
                     fancyCheckboxes = {
@@ -290,7 +295,7 @@ function DeBuffFilter:SetupOptions()
                         args = {
                             sortBySize = { order = 1, type = "toggle", name = "Sort auras by size", get = function() return self.db.profile.sortBySize end, set = function(_, value) self.db.profile.sortBySize = value end, },
                             sortbyDispellable = { order = 2, type = "toggle", name = "Sort by dispellable", get = function() return self.db.profile.sortbyDispellable end, set = function(_, value) self.db.profile.sortbyDispellable = value end, },
-                            highlightAll = { order = 3, type = "toggle", name = "Highlight magic buffs", get = function() return self.db.profile.highlightAll end, set = function(_, value) self.db.profile.highlightAll = value; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
+                            highlightAll = { order = 3, type = "toggle", name = "Highlight magic buffs", get = function() return self.db.profile.highlightAll end, set = function(_, value) self.db.profile.highlightAll = value; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
                             enableRetailGlow = { order = 4, type = "toggle", name = "Retail glow border", get = function() return self.db.profile.enableRetailGlow end, set = function(_, value) self.db.profile.enableRetailGlow = value; StaticPopup_Show("DBF_RELOADUI") end, },
                             disableFade = { order = 5, type = "toggle", name = "Disable fading animation", get = function() return self.db.profile.disableFade end, set = function(_, value) self.db.profile.disableFade = value; StaticPopup_Show("DBF_RELOADUI") end, },
                         },
@@ -309,20 +314,10 @@ function DeBuffFilter:SetupOptions()
                     fancyCount = {
                         order = 4, type = "group", inline = false, name = "Stack count settings",
                         args = {
-                            countColor = { order = 0, type = "color", hasAlpha = false, name = "Stack text color", get = function() local c = self.db.profile.countColor or { 1, 1, 1 }; return c[1], c[2], c[3] end, set = function(_, r, g, b) self.db.profile.countColor = { r, g, b }; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
+                            countColor = { order = 0, type = "color", hasAlpha = false, name = "Stack text color", get = function() local c = self.db.profile.countColor or { 1, 1, 1 }; return c[1], c[2], c[3] end, set = function(_, r, g, b) self.db.profile.countColor = { r, g, b }; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
                             separator = { order = 1, type = "description", name = "\n", width = "full" },
-                            enableFancyCount = { order = 2, type = "toggle", width = "full", name = "Enable stack count size slider", get = function() return self.db.profile.enableFancyCount end, set = function(_, val) self.db.profile.enableFancyCount = val; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, },
-                            countSize = { order = 3, width = 1.5, name = "Stack text size", type = "range", min = 5, max = 35, step = 1, get = function() return self.db.profile.countSize end, set = function(_, val) self.db.profile.countSize = val; TargetFrame_UpdateAuras(TargetFrame); if FocusFrame then TargetFrame_UpdateAuras(FocusFrame) end end, disabled = function() return not self.db.profile.enableFancyCount end, },
-                        },
-                    },
-                    fancyBuffFrame = {
-                        order = 5, type = "group", inline = false, name = "BuffFrame settings",
-                        args = {
-                            buffFrameBuffsPerRow = { order = 0, width = 1, name = "Buffs per row", type = "range", min = 2, max = 20, step = 1, get = function() return self.db.profile.buffFrameBuffsPerRow or 10 end, set = function(_, val) self.db.profile.buffFrameBuffsPerRow = val; BuffFrame_UpdateAllBuffAnchors() end, },
-                            separator1 = { order = 1, type = "description", name = "\n", width = "full" },
-                            enableMovingDuration = { order = 2, type = "toggle", name = "Enable custom timer position", width = "full", get = function() return self.db.profile.enableMovingDuration end, set = function(_, val) self.db.profile.enableMovingDuration = val; StaticPopup_Show("DBF_RELOADUI") end, },
-                            buffFrameDurationYPos = { order = 3, width = 2, name = "Buff duration vertical", type = "range", min = -100, max = 100, step = 1, get = function() return self.db.profile.buffFrameDurationYPos or -12 end, set = function(_, val) self.db.profile.buffFrameDurationYPos = val; BuffFrame_UpdateAllBuffAnchors() end, hidden = function() return not self.db.profile.enableMovingDuration end, },
-                            buffFrameDurationXPos = { order = 4, width = 2, name = "Buff duration horizontal", type = "range", min = -100, max = 100, step = 1, get = function() return self.db.profile.buffFrameDurationXPos or 0 end, set = function(_, val) self.db.profile.buffFrameDurationXPos = val; BuffFrame_UpdateAllBuffAnchors() end, hidden = function() return not self.db.profile.enableMovingDuration end, },
+                            enableFancyCount = { order = 2, type = "toggle", width = "full", name = "Enable stack count size slider", get = function() return self.db.profile.enableFancyCount end, set = function(_, val) self.db.profile.enableFancyCount = val; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, },
+                            countSize = { order = 3, width = 1.5, name = "Stack text size", type = "range", min = 5, max = 35, step = 1, get = function() return self.db.profile.countSize end, set = function(_, val) self.db.profile.countSize = val; TargetFrame:UpdateAuras(); if FocusFrame then FocusFrame:UpdateAuras() end end, disabled = function() return not self.db.profile.enableFancyCount end, },
                         },
                     },
                 },
