@@ -29,7 +29,7 @@ local function DBFrame(self)
             local currentSize = nil
 
             local buttonInfo = auraFrame.buttonInfo
-            if buttonInfo and buttonInfo.IsTempEnchant then
+            if buttonInfo and buttonInfo.isTempEnchant then
                 spellId = buttonInfo.ID
                 expirationTime = buttonInfo.expirationTime
                 name = "Temp Enchant"
