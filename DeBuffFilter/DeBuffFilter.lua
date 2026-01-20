@@ -92,10 +92,6 @@ local PLAYER_UNITS = {
 }
 
 function DeBuffFilter:ShouldAuraBeLarge(caster)
-    if (not GetCVarBool("showDynamicBuffSize")) then
-        return true
-    end
-
     if not caster then
         return false
     end
@@ -123,114 +119,6 @@ local function safeSetPoint(frame, point, relativeTo, relativePoint, x, y)
     end
     frame:ClearAllPoints()
     frame:SetPoint(point, relativeTo, relativePoint, x, y)
-end
-
-local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, offsetX, offsetY, mirrorVertically, newRow)
-    local point, relativePoint
-    local startY, auraOffsetY
-    if mirrorVertically then
-        point = "BOTTOM"
-        relativePoint = "TOP"
-        startY = -19
-        if self.threatNumericIndicator:IsShown() then
-            startY = startY + self.threatNumericIndicator:GetHeight()
-        end
-        offsetY = -offsetY
-        auraOffsetY = -DeBuffFilter.db.profile.verticalSpace
-    else
-        point = "TOP"
-        relativePoint = "BOTTOM"
-        startY = AURA_START_Y
-        auraOffsetY = DeBuffFilter.db.profile.verticalSpace
-    end
-
-    buffName:ClearAllPoints()
-
-    if anchorBuff == nil then
-        if (UnitIsFriend("player", self.unit) and not UnitIsEnemy("player", self.unit)) or numDebuffs == 0 then
-            buffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY)
-        else
-            safeSetPoint(buffName, point .. "LEFT", self.debuffz, relativePoint .. "LEFT", 0, -offsetY)
-        end
-        self.buffz:ClearAllPoints()
-        self.buffz:SetPoint(point .. "LEFT", buffName, point .. "LEFT", 0, 0)
-        self.buffz:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY)
-        self.spellbarAnchor = buffName
-    elseif newRow then
-        buffName:SetPoint(point .. "LEFT", anchorBuff, relativePoint .. "LEFT", 0, -offsetY)
-        self.buffz:ClearAllPoints()
-        self.buffz:SetPoint(relativePoint .. "LEFT", buffName, relativePoint .. "LEFT", 0, -auraOffsetY)
-        self.spellbarAnchor = buffName
-    else
-        buffName:SetPoint(point .. "LEFT", anchorBuff, point .. "RIGHT", offsetX, 0)
-    end
-
-    buffName:SetWidth(size)
-    buffName:SetHeight(size)
-end
-
-local function UpdateDebuffAnchor(
-        self,
-        debuffName,
-        numBuffs,
-        anchorDebuff,
-        size,
-        offsetX,
-        offsetY,
-        mirrorVertically,
-        newRow)
-    local point, relativePoint
-    local startY, auraOffsetY
-    local isFriend = UnitIsFriend("player", self.unit)
-
-    if mirrorVertically then
-        point = "BOTTOM"
-        relativePoint = "TOP"
-        startY = -19
-        if self.threatNumericIndicator:IsShown() then
-            startY = startY + self.threatNumericIndicator:GetHeight()
-        end
-        offsetY = -offsetY
-        auraOffsetY = -DeBuffFilter.db.profile.verticalSpace
-    else
-        point = "TOP"
-        relativePoint = "BOTTOM"
-        startY = AURA_START_Y
-        auraOffsetY = DeBuffFilter.db.profile.verticalSpace
-    end
-
-    debuffName:ClearAllPoints()
-
-    if anchorDebuff == nil then
-        if (isFriend and not UnitIsEnemy("player", self.unit)) and numBuffs > 0 then
-            debuffName:SetPoint(point .. "LEFT", self.buffz, relativePoint .. "LEFT", 0, -offsetY)
-        else
-            debuffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY)
-        end
-        self.debuffz:ClearAllPoints()
-        self.debuffz:SetPoint(point .. "LEFT", debuffName, point .. "LEFT", 0, 0)
-        self.debuffz:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY)
-        if isFriend or (not isFriend and numBuffs == 0) then
-            self.spellbarAnchor = debuffName
-        end
-    elseif newRow then
-        debuffName:SetPoint(point .. "LEFT", anchorDebuff, relativePoint .. "LEFT", 0, -offsetY)
-        self.debuffz:ClearAllPoints()
-        self.debuffz:SetPoint(relativePoint .. "LEFT", debuffName, relativePoint .. "LEFT", 0, -auraOffsetY)
-        if isFriend or (not isFriend and numBuffs == 0) then
-            self.spellbarAnchor = debuffName
-        end
-    else
-        debuffName:SetPoint(point .. "LEFT", anchorDebuff, point .. "RIGHT", offsetX, 0)
-    end
-
-    debuffName:SetWidth(size)
-    debuffName:SetHeight(size)
-    local debuffFrame = _G[debuffName:GetName() .. "Border"]
-    if debuffFrame then
-        debuffFrame:SetWidth(size + 2)
-        debuffFrame:SetHeight(size + 2)
-    end
 end
 
 local function GetFramePosition(frame)
@@ -305,15 +193,98 @@ function DeBuffFilter:TrackAuraDuration(frame, spellId, expirationTime, duration
             }
 end
 
-local function updateLayout(frame, auraList, numOppositeAuras, updateFunc, offsetX, mirrorAurasVertically)
+local function UpdateBuffAnchor(self, buffName, numDebuffs, anchorBuff, size, offsetX, offsetY, mirrorVertically, newRow)
+    local point, relativePoint
+    local startY
+    if mirrorVertically then
+        point = "BOTTOM"
+        relativePoint = "TOP"
+        startY = -19
+        if self.threatNumericIndicator:IsShown() then
+            startY = startY + self.threatNumericIndicator:GetHeight()
+        end
+        offsetY = -offsetY
+    else
+        point = "TOP"
+        relativePoint = "BOTTOM"
+        startY = AURA_START_Y
+    end
+
+    buffName:ClearAllPoints()
+
+    if anchorBuff == nil then
+        buffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY)
+        self.spellbarAnchor = buffName
+    elseif newRow then
+        buffName:SetPoint(point .. "LEFT", anchorBuff, relativePoint .. "LEFT", 0, -offsetY)
+        self.spellbarAnchor = buffName
+    else
+        buffName:SetPoint(point .. "LEFT", anchorBuff, point .. "RIGHT", offsetX, 0)
+    end
+
+    buffName:SetWidth(size)
+    buffName:SetHeight(size)
+end
+
+local function UpdateDebuffAnchor(self, debuffName, numBuffs, anchorDebuff, size, offsetX, offsetY, mirrorVertically, newRow)
+    local point, relativePoint
+    local startY
+    if mirrorVertically then
+        point = "BOTTOM"
+        relativePoint = "TOP"
+        startY = -19
+        if self.threatNumericIndicator:IsShown() then
+            startY = startY + self.threatNumericIndicator:GetHeight()
+        end
+        offsetY = -offsetY
+    else
+        point = "TOP"
+        relativePoint = "BOTTOM"
+        startY = AURA_START_Y
+    end
+
+    debuffName:ClearAllPoints()
+
+    if anchorDebuff == nil then
+        debuffName:SetPoint(point .. "LEFT", self, relativePoint .. "LEFT", AURA_START_X, startY)
+        local isFriend = UnitIsFriend("player", self.unit)
+        if isFriend or (not isFriend and numBuffs == 0) then
+            self.spellbarAnchor = debuffName
+        end
+    elseif newRow then
+        debuffName:SetPoint(point .. "LEFT", anchorDebuff, relativePoint .. "LEFT", 0, -offsetY)
+        local isFriend = UnitIsFriend("player", self.unit)
+        if isFriend or (not isFriend and numBuffs == 0) then
+            self.spellbarAnchor = debuffName
+        end
+    else
+        debuffName:SetPoint(point .. "LEFT", anchorDebuff, point .. "RIGHT", offsetX, 0)
+    end
+
+    debuffName:SetWidth(size)
+    debuffName:SetHeight(size)
+    local debuffFrame = _G[debuffName:GetName() .. "Border"]
+    if debuffFrame then
+        debuffFrame:SetWidth(size + 2)
+        debuffFrame:SetHeight(size + 2)
+    end
+end
+
+local function updateLayout(frame, auraList, numOppositeAuras, updateFunc, offsetX, mirrorAurasVertically, previousAnchor, startDistance)
     local db = DeBuffFilter.db.profile
     local maxRowWidth = db.auraWidth
     local yDistance = db.verticalSpace
     local rowWidth, anchorRowAura, lastBuff = 0, nil, nil
-    local biggestAura, offsetY = nil, yDistance
+    local distance = startDistance or yDistance
+    local biggestAura = 0
+
     local haveToT = frame.totFrame and frame.totFrame:IsShown()
     local totFrameX, totFrameBottom = GetFramePosition(frame.totFrame)
     local currentX, currentY
+
+    if previousAnchor then
+        anchorRowAura = previousAnchor
+    end
 
     for _, data in ipairs(auraList) do
         if data.shouldHide then
@@ -322,64 +293,61 @@ local function updateLayout(frame, auraList, numOppositeAuras, updateFunc, offse
             end
         else
             local dbf, size = data.dbf, data.size
-
             dbf:Show()
-
-            local shouldBeLarge = data.largeAura
-            if shouldBeLarge then
-                offsetY = yDistance * 2
-            end
 
             if lastBuff == nil then
                 rowWidth = size
                 frame.auraRows = frame.auraRows + 1
-                anchorRowAura = dbf
+
+                if previousAnchor then
+                    if frame.largestAura then
+                        distance = frame.largestAura
+                    end
+                    updateFunc(frame, dbf, numOppositeAuras, previousAnchor, size, offsetX, distance, mirrorAurasVertically, true)
+                    anchorRowAura = dbf
+                else
+                    updateFunc(frame, dbf, numOppositeAuras, nil, size, offsetX, 0, mirrorAurasVertically, false)
+                    anchorRowAura = dbf
+                end
+
                 if frame.largestAura then
-                    offsetY = frame.largestAura
+                    distance = frame.largestAura
                 end
             else
                 rowWidth = rowWidth + size + offsetX
-            end
-
-            local verticalDistance = currentY and (currentY - totFrameBottom) or 0
-            local horizontalDistance = rowWidth
-            if currentX then
-                horizontalDistance = mfloor(mabs((currentX + size + offsetX) - totFrameX)) + 5
-            end
-
-            local breakRow = false
-            if (haveToT and (horizontalDistance < size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
-                breakRow = true
-            end
-
-            if breakRow then
-                if biggestAura and anchorRowAura and biggestAura >= mfloor(anchorRowAura:GetHeight() + 0.5) then
-                    offsetY = (yDistance * 2) + (biggestAura - anchorRowAura:GetHeight())
+                local verticalDistance = currentY and (currentY - totFrameBottom) or 0
+                local horizontalDistance = rowWidth
+                if currentX then
+                    horizontalDistance = mfloor(mabs((currentX + size + offsetX) - totFrameX)) + 5
                 end
-                updateFunc(
-                        frame,
-                        dbf,
-                        numOppositeAuras,
-                        anchorRowAura,
-                        size,
-                        offsetX,
-                        offsetY,
-                        mirrorAurasVertically,
-                        true
-                )
-                rowWidth = size
-                frame.auraRows = frame.auraRows + 1
-                anchorRowAura = dbf
-                offsetY = yDistance
-                biggestAura = nil
-                frame.largestAura = nil
-            else
-                updateFunc(frame, dbf, numOppositeAuras, lastBuff, size, offsetX, offsetY, mirrorAurasVertically)
+
+                local breakRow = false
+                if (haveToT and (horizontalDistance < size) and verticalDistance > 0) or (rowWidth > maxRowWidth) then
+                    breakRow = true
+                end
+
+                if breakRow then
+                    if biggestAura and anchorRowAura and biggestAura >= mfloor(anchorRowAura:GetHeight() + 0.5) then
+                        distance = (yDistance * 2) + (biggestAura - anchorRowAura:GetHeight())
+                    elseif yDistance == 1 and data.largeAura then
+                        distance = 2
+                    else
+                        distance = yDistance
+                    end
+                    updateFunc(frame, dbf, numOppositeAuras, anchorRowAura, size, offsetX, distance, mirrorAurasVertically, true)
+                    rowWidth = size
+                    frame.auraRows = frame.auraRows + 1
+                    anchorRowAura = dbf
+                    distance = yDistance
+                    biggestAura = 0
+                    frame.largestAura = nil
+                else
+                    updateFunc(frame, dbf, numOppositeAuras, lastBuff, size, offsetX, distance, mirrorAurasVertically, false)
+                end
             end
 
             lastBuff = dbf
             currentX, currentY = dbf:GetLeft(), dbf:GetTop()
-
             if not biggestAura or biggestAura < size then
                 biggestAura = size
             end
@@ -389,6 +357,7 @@ local function updateLayout(frame, auraList, numOppositeAuras, updateFunc, offse
             end
         end
     end
+    return anchorRowAura
 end
 
 local function ProcessList(list, shouldSort)
@@ -440,7 +409,6 @@ local function Filterino(self)
             MAX_TARGET_BUFFS,
             function(...)
                 local buffName, icon, count, debuffType, duration, expirationTime, caster, canStealOrPurge, _, spellId = ...
-
                 if buffName and icon then
                     local frameName = selfName .. "Buff" .. buffIndex
                     local frame = _G[frameName]
@@ -456,32 +424,19 @@ local function Filterino(self)
 
                             if action then
                                 for _, act in ipairs(action) do
-                                    if act.hide then
-                                        shouldHide = true
-                                    end
-                                    if act.glow then
-                                        shouldGlow = true
-                                    end
+                                    if act.hide then shouldHide = true end
+                                    if act.glow then shouldGlow = true end
                                     if act.size and act.size.enabled then
-                                        buffSize = shouldBeLarge and (act.selfSize or act.otherSize or 21) or
-                                                (act.otherSize or act.selfSize or 19)
+                                        buffSize = shouldBeLarge and (act.selfSize or act.otherSize or 21) or (act.otherSize or act.selfSize or 19)
                                     end
                                 end
                             end
 
                             if frameSettings then
-                                if frameSettings.removeDuplicates then
-                                    removeDuplicates = true
-                                end
-                                if frameSettings.ownOnly then
-                                    ownOnly = true
-                                end
-                                if frameSettings.alwaysEnableGlow then
-                                    shouldGlow = true
-                                end
-                                if frameSettings.color then
-                                    colorTable = frameSettings.color
-                                end
+                                if frameSettings.removeDuplicates then removeDuplicates = true end
+                                if frameSettings.ownOnly then ownOnly = true end
+                                if frameSettings.alwaysEnableGlow then shouldGlow = true end
+                                if frameSettings.color then colorTable = frameSettings.color end
                                 if frameSettings.priorityEnabled and frameSettings.priority and frameSettings.priority > 0 then
                                     prioValue = frameSettings.priority
                                     needBuffSort = true
@@ -500,25 +455,20 @@ local function Filterino(self)
                                 end
                             end
 
-                            if ownOnly and caster ~= "player" then
-                                shouldHide = true
-                            end
+                            if ownOnly and caster ~= "player" then shouldHide = true end
 
-                            tinsert(
-                                    buffList,
-                                    {
-                                        dbf = frame,
-                                        shouldHide = shouldHide,
-                                        size = buffSize,
-                                        prio = prioValue,
-                                        removeDuplicates = removeDuplicates,
-                                        spellId = spellId,
-                                        name = buffName,
-                                        largeAura = shouldBeLarge,
-                                        dispelName = debuffType,
-                                        index = buffIndex
-                                    }
-                            )
+                            tinsert(buffList, {
+                                dbf = frame,
+                                shouldHide = shouldHide,
+                                size = buffSize,
+                                largeAura = shouldBeLarge,
+                                prio = prioValue,
+                                removeDuplicates = removeDuplicates,
+                                spellId = spellId,
+                                name = buffName,
+                                dispelName = debuffType,
+                                index = buffIndex
+                            })
 
                             local frameStealable = _G[frameName .. "Stealable"]
                             local modifier = retailGlow and 2.06 or 1.34
@@ -530,9 +480,7 @@ local function Filterino(self)
                                         if C_Texture.GetAtlasInfo("newplayertutorial-drag-slotblue") then
                                             frameStealable:SetAtlas("newplayertutorial-drag-slotblue")
                                         else
-                                            frameStealable:SetTexture(
-                                                    "Interface\\TargetingFrame\\UI-TargetingFrame-Stealable"
-                                            )
+                                            frameStealable:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Stealable")
                                         end
                                         frameStealable:SetDesaturated(true)
                                     end
@@ -552,14 +500,11 @@ local function Filterino(self)
 
                             local fCount = _G[frameName .. "Count"]
                             if fCount then
-                                if not fontName then
-                                    fontName = fCount:GetFont()
-                                end
+                                if not fontName then fontName = fCount:GetFont() end
                                 fCount:SetFont(fontName, buffSize / 1.75, "OUTLINE, THICKOUTLINE, MONOCHROME")
                                 local c = db.countColor or { 1, 1, 1 }
                                 fCount:SetVertexColor(c[1], c[2], c[3])
                             end
-
                             buffIndex = buffIndex + 1
                         end
                     end
@@ -576,20 +521,7 @@ local function Filterino(self)
             AuraUtil.CreateFilterString(AuraUtil.AuraFilters.Harmful, AuraUtil.AuraFilters.IncludeNameplateOnly),
             maxDebuffs,
             function(...)
-                local debuffName,
-                icon,
-                count,
-                debuffType,
-                duration,
-                expirationTime,
-                caster,
-                _,
-                _,
-                spellId,
-                _,
-                _,
-                casterIsPlayer,
-                nameplateShowAll = ...
+                local debuffName, icon, count, debuffType, duration, expirationTime, caster, _, _, spellId, _, _, casterIsPlayer, nameplateShowAll = ...
 
                 if debuffName and icon then
                     if (self:ShouldShowDebuffs(self.unit, caster, nameplateShowAll, casterIsPlayer)) then
@@ -607,32 +539,19 @@ local function Filterino(self)
 
                             if action then
                                 for _, act in ipairs(action) do
-                                    if act.hide then
-                                        shouldHide = true
-                                    end
-                                    if act.glow then
-                                        shouldGlow = true
-                                    end
+                                    if act.hide then shouldHide = true end
+                                    if act.glow then shouldGlow = true end
                                     if act.size and act.size.enabled then
-                                        buffSize = shouldBeLarge and (act.selfSize or act.otherSize or 21) or
-                                                (act.otherSize or act.selfSize or 19)
+                                        buffSize = shouldBeLarge and (act.selfSize or act.otherSize or 21) or (act.otherSize or act.selfSize or 19)
                                     end
                                 end
                             end
 
                             if frameSettings then
-                                if frameSettings.removeDuplicates then
-                                    removeDuplicates = true
-                                end
-                                if frameSettings.ownOnly then
-                                    ownOnly = true
-                                end
-                                if frameSettings.alwaysEnableGlow then
-                                    shouldGlow = true
-                                end
-                                if frameSettings.color then
-                                    colorTable = frameSettings.color
-                                end
+                                if frameSettings.removeDuplicates then removeDuplicates = true end
+                                if frameSettings.ownOnly then ownOnly = true end
+                                if frameSettings.alwaysEnableGlow then shouldGlow = true end
+                                if frameSettings.color then colorTable = frameSettings.color end
                                 if frameSettings.priorityEnabled and frameSettings.priority and frameSettings.priority > 0 then
                                     prioValue = frameSettings.priority
                                     needDebuffSort = true
@@ -651,24 +570,20 @@ local function Filterino(self)
                                 end
                             end
 
-                            if ownOnly and caster ~= "player" then
-                                shouldHide = true
-                            end
-                            tinsert(
-                                    debuffList,
-                                    {
-                                        dbf = frame,
-                                        shouldHide = shouldHide,
-                                        size = buffSize,
-                                        prio = prioValue,
-                                        removeDuplicates = removeDuplicates,
-                                        spellId = spellId,
-                                        name = debuffName,
-                                        largeAura = shouldBeLarge,
-                                        dispelName = debuffType,
-                                        index = debuffIndex
-                                    }
-                            )
+                            if ownOnly and caster ~= "player" then shouldHide = true end
+
+                            tinsert(debuffList, {
+                                dbf = frame,
+                                shouldHide = shouldHide,
+                                size = buffSize,
+                                largeAura = shouldBeLarge,
+                                prio = prioValue,
+                                removeDuplicates = removeDuplicates,
+                                spellId = spellId,
+                                name = debuffName,
+                                dispelName = debuffType,
+                                index = debuffIndex
+                            })
 
                             local frameStealable = _G[frameName .. "Stealable"]
                             local debuffBorder = _G[frameName .. "Border"]
@@ -684,9 +599,7 @@ local function Filterino(self)
                                             if C_Texture.GetAtlasInfo("newplayertutorial-drag-slotblue") then
                                                 frameStealable:SetAtlas("newplayertutorial-drag-slotblue")
                                             else
-                                                frameStealable:SetTexture(
-                                                        "Interface\\TargetingFrame\\UI-TargetingFrame-Stealable"
-                                                )
+                                                frameStealable:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Stealable")
                                             end
                                             frameStealable:SetDesaturated(true)
                                         end
@@ -697,33 +610,23 @@ local function Filterino(self)
                                     frameStealable:SetVertexColor(colorTable.r, colorTable.g, colorTable.b, colorTable.a)
                                     frameStealable:SetSize(buffSize * modifier, buffSize * modifier)
                                 end
-                                if debuffBorder then
-                                    debuffBorder:Hide()
-                                end
+                                if debuffBorder then debuffBorder:Hide() end
                             else
-                                if frameStealable then
-                                    frameStealable:Hide()
-                                end
-                                if debuffBorder then
-                                    debuffBorder:Show()
-                                end
+                                if frameStealable then frameStealable:Hide() end
+                                if debuffBorder then debuffBorder:Show() end
                             end
 
-                            if debuffBorder then
-                                debuffBorder:SetSize(buffSize + 2, buffSize + 2)
-                            end
+                            if debuffBorder then debuffBorder:SetSize(buffSize + 2, buffSize + 2) end
                             frame:SetSize(buffSize, buffSize)
 
                             local fCount = _G[frameName .. "Count"]
                             if fCount then
-                                if not fontName then
-                                    fontName = fCount:GetFont()
-                                end
+                                if not fontName then fontName = fCount:GetFont() end
                                 fCount:SetFont(fontName, buffSize / 1.75, "OUTLINE, THICKOUTLINE, MONOCHROME")
+                                fCount:SetPoint("BOTTOMRIGHT", 2, -2)
                                 local c = db.countColor or { 1, 1, 1 }
                                 fCount:SetVertexColor(c[1], c[2], c[3])
                             end
-
                             debuffIndex = debuffIndex + 1
                         end
                     end
@@ -740,22 +643,14 @@ local function Filterino(self)
     self.auraRows = 0
     self.largestAura = 0
     self.spellbarAnchor = nil
-
-    if not self.buffz then
-        self.buffz = CreateFrame("Frame", "$parentBuffz", self)
-        self.buffz:SetSize(10, 10)
-    end
-    if not self.debuffz then
-        self.debuffz = CreateFrame("Frame", "$parentDebuffz", self)
-        self.debuffz:SetSize(10, 10)
-    end
+    local lastAnchor = nil
 
     if isEnemy then
-        updateLayout(self, debuffList, numVisibleBuffs, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
-        updateLayout(self, buffList, numVisibleDebuffs, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
+        lastAnchor = updateLayout(self, debuffList, numVisibleBuffs, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, nil)
+        updateLayout(self, buffList, numVisibleDebuffs, UpdateBuffAnchor, offsetX, mirrorAurasVertically, lastAnchor, 2)
     else
-        updateLayout(self, buffList, numVisibleDebuffs, UpdateBuffAnchor, offsetX, mirrorAurasVertically)
-        updateLayout(self, debuffList, numVisibleBuffs, UpdateDebuffAnchor, offsetX, mirrorAurasVertically)
+        lastAnchor = updateLayout(self, buffList, numVisibleDebuffs, UpdateBuffAnchor, offsetX, mirrorAurasVertically, nil)
+        updateLayout(self, debuffList, numVisibleBuffs, UpdateDebuffAnchor, offsetX, mirrorAurasVertically, lastAnchor, 2)
     end
 
     if self.spellbar then
