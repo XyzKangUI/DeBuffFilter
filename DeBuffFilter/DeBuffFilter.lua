@@ -212,7 +212,6 @@ local function updateLayout(frame, auraList, numOppositeAuras, isBuff, offsetX, 
         currentY = mirrorAurasVertically and (startY + startYOffset) or (startY - startYOffset)
     end
     
-    local rowWidth = 0
     local biggestAuraInRow = 0
     local haveToT = frame.totFrame and frame.totFrame:IsShown()
     local totFrameX, totFrameBottom = GetFramePosition(frame.totFrame)
@@ -226,15 +225,15 @@ local function updateLayout(frame, auraList, numOppositeAuras, isBuff, offsetX, 
             local dbf, size = data.dbf, data.size
             dbf:Show()
             
-            if rowWidth > 0 then
-                local newWidth = rowWidth + size + offsetX
-                local rightEnd = frame:GetLeft() + currentX + size + offsetX
+            if (currentX - startX) > 0 then
+                local newWidth = (currentX - startX) + size + offsetX
+                local leftestAura = frame:GetLeft() + currentX + offsetX
                 local bottomEnd = frame:GetBottom() + currentY
                 
                 local verticalDistance = bottomEnd and (bottomEnd - totFrameBottom) or 0
                 local horizontalDistance = newWidth
-                if rightEnd then
-                    horizontalDistance = mfloor(mabs(rightEnd - totFrameX)) + 5
+                if leftestAura then
+                    horizontalDistance = mfloor(mabs(leftestAura - totFrameX)) + 5
                 end
 
                 local breakRow = false
@@ -249,7 +248,6 @@ local function updateLayout(frame, auraList, numOppositeAuras, isBuff, offsetX, 
                     
                     currentY = mirrorAurasVertically and (currentY + rowDrop) or (currentY - rowDrop)
                     currentX = startX
-                    rowWidth = 0
                     biggestAuraInRow = 0
                     frame.dbfaurarow = frame.dbfaurarow + 1
                 else
@@ -281,7 +279,6 @@ local function updateLayout(frame, auraList, numOppositeAuras, isBuff, offsetX, 
                 end
             end
             
-            rowWidth = rowWidth + size
             currentX = currentX + size
         end
     end
