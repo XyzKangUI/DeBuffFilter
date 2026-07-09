@@ -105,25 +105,24 @@ function DeBuffFilter.DBFrame(self)
     local frameName = isDebuff and "DebuffFrame" or "BuffFrame"
     local db = DeBuffFilter.db.profile
 
-    for i, auraInfo in ipairs(self.auraInfo or {}) do
-        local auraFrame = self.auraFrames[i]
+    for i, auraFrame in ipairs(self.auraFrames or {}) do
 
-        if auraFrame and auraFrame:IsShown() then
+        if auraFrame and not auraFrame.isAuraAnchor and not auraFrame.isExample and auraFrame:IsShown() then
             local shouldHide, shouldGlow, colorTable = false, false, { r = 1, g = 1, b = 0.85, a = 1 }
             local removeDuplicates = false
             local name, count, duration, expirationTime, source, spellId
             local currentSize = nil
 
             local buttonInfo = auraFrame.buttonInfo
-            if buttonInfo and buttonInfo.isTempEnchant then
+            if buttonInfo and buttonInfo.auraType == "TempEnchant" then
                 spellId = buttonInfo.ID
                 expirationTime = buttonInfo.expirationTime
                 name = "Temp Enchant"
                 source = "player"
                 count = 0
                 duration = 0
-            else
-                local auraData = C_UnitAuras.GetAuraDataByIndex("player", auraInfo.index, filter)
+            elseif buttonInfo and buttonInfo.index then
+                local auraData = C_UnitAuras.GetAuraDataByIndex("player", buttonInfo.index, filter)
                 if auraData then
                     spellId = auraData.spellId
                     name = auraData.name
@@ -261,11 +260,24 @@ function DeBuffFilter.DBFrame(self)
         end
     end
     
-    if self.AuraContainer.currentGridLayoutInfo then
+    if self.AuraContainer.currentGridLayoutInfo and self.AuraContainer.currentGridLayoutInfo.anchor then
+        local container = self.AuraContainer
+        local isColumnBased = not container.isHorizontal
+        local xMultiplier = container.addIconsToRight and 1 or -1
+        local yMultiplier = container.addIconsToTop and 1 or -1
+        local padding = container.iconPadding or 0
+
         SafeApplyGridLayout(framesToLayout,
-        self.AuraContainer.currentGridLayoutInfo.anchor,
-        self.AuraContainer.currentGridLayoutInfo.layout
-       )
+            container.currentGridLayoutInfo.anchor,
+            {
+                isColumnBased = isColumnBased,
+                stride = container.iconStride or 1,
+                primarySizePadding = padding,
+                secondarySizePadding = padding,
+                primaryMultiplier = isColumnBased and yMultiplier or xMultiplier,
+                secondaryMultiplier = isColumnBased and xMultiplier or yMultiplier,
+            }
+        )
     end
 
 end

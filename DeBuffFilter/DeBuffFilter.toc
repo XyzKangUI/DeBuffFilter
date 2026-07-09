@@ -1,6 +1,6 @@
-## Interface: 20505
+## Interface: 20506
 ## Title: DeBuffFilter
-## Version: v5.9
+## Version: v6.0
 ## Notes: discord.gg/CtxPasSQnQ
 ## Author: Xyz, Asuri (bugs, jk)
 ## SavedVariables: DeBuffFilterDB
